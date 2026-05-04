@@ -31,7 +31,11 @@ public class AnalizadorLexico extends JFrame {
 
     private ArrayList<Object[]> listaTokens = new ArrayList<>();
     private ArrayList<Object[]> listaErrores = new ArrayList<>();
+    private ArrayList<Object[]> listaErroresSintactico = new ArrayList<>();
     private static String[][] matriz;
+    private static String[][] matrizSintactica;
+    private Map<String, Integer> contadorNoTerminales = new HashMap<>();
+    Stack<String> pilaSintactica = new Stack<>();
     private int[] categorias = new int[32];
     private final int ERRORES                        = 0;
     private final int ID_CADENA                       = 1;
@@ -81,11 +85,16 @@ public class AnalizadorLexico extends JFrame {
     
 
     ArrayList<String> palabrasReservadas = new ArrayList<>(Arrays.asList(
-        "if", "else", "switch", "for", "do", "while", "console.log", "forEach", "break", "continue", "let", "const",
+        "if", "else", "switch", "for", "do", "while", "forEach", "break", "continue", "let", "const",
         "undefined", "interface", "typeof", "any", "interface", "set", "get", "class", "toLowerCase",
         "toUpperCase", "length", "trim", "charAt", "startsWith", "endsWith", "indexOf", "Includes","slice",
         "replace", "split", "push", "shift", "in", "of", "splice", "concat", "find", "findIndex", "filter", "map", "sort",
-        "reverse"
+        "reverse", 
+        //PALABRAS AGREGADAS PARA FASE 2 : SINTAXIS
+        "main","console.read","console.log","def","elseif","default","return","case","var","reg",
+        //palabras funcion
+        "CLEAR", "SQRT", "POW", "SQRTV", "STRLEN","copy", "val", "str", "sin", "cos", "tan","chr","pred", "succ",
+        "inc", "dec","sqr"
     ));
     ArrayList<String> booleanas = new ArrayList<>(Arrays.asList(
         "true", "false"
@@ -93,6 +102,123 @@ public class AnalizadorLexico extends JFrame {
     ArrayList<String> nulas = new ArrayList<>(Arrays.asList(
         "null"
     ));
+    private static final String[][] producciones = {
+        {}, // Índice 0
+        {"A1", "main", "(", ")", "{", "STATU", "A2", "}"},
+        {";", "STATU", "A2"},
+        {"reg", "id", "{", "id", "A3", "}", "A1"},
+        {",", "id", "A3"},
+        {"var", "A4", "id", "[", "const ent", "A5", "]", "A6", "A7", ";", "A1"},
+        {"reg", "id"},
+        {",", "const ent", "A5"},
+        {"[", "const ent", "A5", "]", "A6"},
+        {",", "A4", "id", "[", "const ent", "A5", "]", "A6", "A7"},
+        {"def", "id", "LISTA DE PARAMETROS", "PROGRAMA", ";", "A1"},
+        {"id", "=", "DECLARACION CONSTANTES", "A8", ";", "A1"},
+        {",", "id", "=", "DECLARACION CONSTANTES", "A8"}, 
+        {"ε"},
+        {"(", "id", "A3", ")"},
+        {"CONSTANTE S/SIGNO"},
+        {"+", "CONSTANTE S/SIGNO"},
+        {"-", "CONSTANTE S/SIGNO"},
+        {"const real"},
+        {"const cadena"},
+        {"CONST NUMERICA"},
+        {"true"},
+        {"false"},
+        {"const exponencial"},
+        {"null"},
+        {"binario"},
+        {"const decimal"},
+        {"const octal"},
+        {"const hexadecimal"},
+        {"console.read", "(", "OR", "B1", ")"},
+        {",", "OR", "B1"},
+        {"console.log", "(", "OR", ")"},
+        {"if", "(", "OR", ")", "STATU", "B2"},
+        {"elseif", "(", "OR", ")", "STATU", "B2"},
+        {"else", "STATU"},
+        {"OR"},
+        {"{", "STATU", "A2", "}"},
+        {"while", "(", "OR", ")", "STATU"},
+        {"do", "STATU", "while", "(", "OR", ")", ";"},
+        {"return", "OR", ";"},
+        {"for", "(", "OR", "B3", ")", "STATU"},
+        {",", "OR", "B3"},
+        {":", "OR"},
+        {";", "STATU", ";", "OR", "B1"},
+        {"switch", "(", "OR", ")", "{", "case", "OR", ":", "STATU", "B4", "}"},
+        {";", "STATU", "B4"},
+        {"break", "B5"},
+        {"case", "OR", ":", "STATU", "B4"},
+        {"default", ":", "STATU", "A2"},
+        {"AND", "C1"},
+        {"||", "AND", "C1"},
+        {"|", "AND", "C1"},
+        {"EXP_PAS", "D1"},
+        {"&&", "EXP_PAS", "D1"},
+        {"&", "EXP_PAS", "D1"},
+        {"SIMPLE EXP PASCAL", "E1"},
+        {"<", "SIMPLE EXP PASCAL", "E1"},
+        {">=", "SIMPLE EXP PASCAL", "E1"},
+        {"<=", "SIMPLE EXP PASCAL", "E1"},
+        {"!=", "SIMPLE EXP PASCAL", "E1"},
+        {"==", "SIMPLE EXP PASCAL", "E1"},
+        {">", "SIMPLE EXP PASCAL", "E1"},
+        {"TERMINO PASCAL", "F1"}, 
+        {"-", "TERMINO PASCAL", "F1"},
+        {"+", "TERMINO PASCAL", "F1"},
+        {"<<", "TERMINO PASCAL", "F1"},
+        {">>", "TERMINO PASCAL", "F1"},
+        {">>>", "TERMINO PASCAL", "F1"}, // Índice 67: >>> TERMINO PASCAL F1
+        {"ELEVACION", "G1"}, // Índice 68: ELEVACION G1
+        {"*", "ELEVACION", "G1"}, // Índice 69: * ELEVACION G1
+        {"/", "ELEVACION", "G1"}, // Índice 70: / ELEVACION G1
+        {"#", "ELEVACION", "G1"}, // Índice 71: # ELEVACION G1
+        {"&", "ELEVACION", "G1"}, // Índice 72: & ELEVACION G1
+        {"%", "ELEVACION", "G1"}, // Índice 73: % ELEVACION G1
+        {"FACTOR", "H1"}, // Índice 74: FACTOR H1
+        {"^", "FACTOR", "H1"}, // Índice 75: ^ FACTOR H1
+        {"DECLARACION CONSTANTES"}, // Índice 76: DECLARACION CONSTANTES
+        {"id", "I1"}, // Índice 77: id I1
+        {"ARR", "I2"}, // Índice 78: ARR I2
+        {"ASIG", "OR", "I3"}, // Índice 79: ASIG OR I3
+        {"(", "I4", ")"}, // Índice 80: ( I4 )
+        {"ASIG", "OR", "I3"}, // Índice 81: ASIG OR I3
+        {"?", "OR", ":", "OR"}, // Índice 82: ? OR : OR
+        {"OR", "B1"}, // Índice 83: OR B1
+        {"++", "id", "I1"}, // Índice 84: ++ id I1
+        {"--", "id", "I1"}, // Índice 85: -- id I1
+        {"(", "OR", ")"}, // Índice 86: ( OR )
+        {"!", "(", "OR", ")"}, // Índice 87: ! ( OR )
+        {"~", "(", "OR", ")"}, // Índice 88: ~ ( OR )
+        {"FUNCION"}, // Índice 89: FUNCION
+        {"[", "OR", "B1", "]"}, // Índice 90: [ OR B1 ]
+        {"CLEAR"}, // Índice 91: CLEAR
+        {"SQRT", "(", "OR", ")"}, // Índice 92: SQRT ( OR )
+        {"POW", "(", "OR", ",", "OR", ")"}, // Índice 93: POW ( OR , OR )
+        {"SQRTV", "(", "OR", ",", "OR", ")"}, // Índice 94: SQRTV ( OR , OR )
+        {"STRLEN", "(", "OR", ")"}, // Índice 95: STRLEN ( OR )
+        {"concat", "(", "OR", ")"}, // Índice 96: concat ( OR )
+        {"copy", "(", "OR", ",", "OR", ")"}, // Índice 97: copy ( OR , OR )
+        {"val", "(", "OR", ",", "OR", ",", "OR", ")"}, // Índice 98: val ( OR , OR , OR )
+        {"str", "(", "OR", ",", "OR", ")"}, // Índice 99: str ( OR , OR )
+        {"sin", "(", "OR", ")"}, // Índice 100: sin ( OR )
+        {"cos", "(", "OR", ")"}, // Índice 101: cos ( OR )
+        {"tan", "(", "OR", ")"}, // Índice 102: tan ( OR )
+        {"chr", "(", "OR", ")"}, // Índice 103: chr ( OR )
+        {"pred", "(", "OR", ")"}, // Índice 104: pred ( OR )
+        {"succ", "(", "OR", ")"}, // Índice 105: succ ( OR )
+        {"inc", "(", "OR", ")"}, // Índice 106: inc ( OR )
+        {"dec", "(", "OR", ")"}, // Índice 107: dec ( OR )
+        {"sqr", "(", "OR", ")"}, // Índice 108: sqr ( OR )
+        {"="}, // Índice 109: =
+        {"+="}, // Índice 110: +=
+        {"-="}, // Índice 111: -=
+        {"/="}, // Índice 112: /=
+        {"*="}, // Índice 113: *=
+    };
+    
 
     public final Map<String, Integer> valoresPalabras = new HashMap<>() {{
     put("true", -69);
@@ -141,7 +267,35 @@ public class AnalizadorLexico extends JFrame {
     put("map", -112);
     put("sort", -113);
     put("reverse", -114);
-}};
+    put("main",-115);
+    put("console.read",-116);
+    put("def",-117);
+    put("elseif",-118);
+    put("default",-119);
+    put("return",-120);
+    put("case",-121);
+    put("var",-122);
+    put("reg",-123);
+    put("CLEAR", -124);
+    put("SQRT", -125);
+    put("POW", -126);
+    put("SQRTV", -127);
+    put("STRLEN", -128);
+    put("copy", -129);
+    put("val", -130);
+    put("str", -131);
+    put("sin", -132);
+    put("cos", -133);
+    put("tan", -134);
+    put("chr", -135);
+    put("pred", -136);
+    put("succ", -137);
+    put("inc", -138);
+    put("dec", -139);
+    put("sqr", -140);
+    
+    }};
+
     public final Map<Integer, String> descripcionErrores = new HashMap<>() {{
         put(500,"Carácter invalido \\n");
         put(501,"Se esperaba [BLO]");
@@ -157,7 +311,164 @@ public class AnalizadorLexico extends JFrame {
         put(511,"Se esperaba una letra");
         put(512,"Se esperaba cierre de comentario (*/)");
         put(513,"Se esperaba cierre de cadena");
+        put(514,"Se esperaba var,reg,def,id,main");
+        put(515,"Se esperaba var,reg,def,id");
+        put(516, "Se esperaba ;");
+        put(517, "Se esperaba ,");
+        put(518, "Se esperaba reg");
+        put(519, "Se esperaba [");
+        put(520, "Se esperaba (");
+        put(521, "Se esperaba +,-,Const o boleano");
+        put(522, "Se esperaba Const o boleano");
+        put(523, "Se esperaba Const");
+        put(524, "Error STATU");
+        put(525, "Se esperaba else o elseif");
+        put(526, "Se esperaba , , ; o :");
+        put(527, "Se esperaba ; o break");
+        put(528, "Se esperaba case o default");
+        put(529, "error OR AND");
+        put(530, "Se espera | o ||");
+        put(531, "Se espera & o &&");
+        put(532, "Se esperaba <,>=,<=,!=,==,>,");
+        put(533, "Se esperaba <<,>>,>>>");
+        put(534, "Se esperaba *,/#,&,%");
+        put(535, "Se esperaba ^");
+        put(536, "Se esperaba ASIG, [,( ");
+        put(537, "Se esperaba ASIG");
+        put(538, "Se esperaba ?");
+        put(539, "Se esperaba [");
+        put(540, "Se esperaba palabra FUNCION");
     }};
+    public final Map<String, Integer> noTerminales = new HashMap<>() {{
+    put("PROGRAMA", 0);
+    put("A1", 1);
+    put("A2", 2);
+    put("A3", 3);
+    put("A4", 4);
+    put("A5", 5);
+    put("A6", 6);
+    put("A7", 7);
+    put("A8", 8);
+    put("LISTA DE PARAMETROS", 9);
+    put("DECLARACION CONSTANTES", 10);
+    put("CONSTANTE S/SIGNO", 11);
+    put("CONST NUMERICA", 12);
+    put("STATU", 13);
+    put("B1", 14);
+    put("B2", 15);
+    put("B3", 16);
+    put("B4", 17);
+    put("B5", 18);
+    put("OR", 19);
+    put("C1", 20);
+    put("AND", 21);
+    put("D1", 22);
+    put("EXP_PAS", 23);
+    put("E1", 24);
+    put("SIMPLE EXP PASCAL", 25);
+    put("F1", 26);
+    put("TERMINO PASCAL", 27);
+    put("G1", 28);
+    put("ELEVACION", 29);
+    put("H1", 30);
+    put("FACTOR", 31);
+    put("I1", 32);
+    put("I2", 33);
+    put("I3", 34);
+    put("I4", 35);
+    put("ARR", 36);
+    put("FUNCION", 37);
+    put("ASIG", 38);
+}};
+    public final Map<String, Integer> Terminales = new HashMap<>() {{
+    put("main", 0);
+    put("(", 1);
+    put(")", 2);
+    put("{", 3);
+    put("}", 4);
+    put("reg", 5);
+    put("var", 6);
+    put("def", 7);
+    put("id", 8);
+    put(";", 9);
+    put(",", 10);
+    put("[", 11);
+    put("]", 12);
+    put("$", 13);
+    put("+", 14);
+    put("-", 15);
+    put("const real", 16);
+    put("const cadena", 17);
+    put("binario", 18);
+    put("const decimal", 19);
+    put("const octal", 20);
+    put("const hexadecimal", 21);
+    put("true", 22);
+    put("false", 23);
+    put("const exponencial", 24);
+    put("null", 25);
+    put("console.read", 26);
+    put("console.log", 27);
+    put("if", 28);
+    put("++", 29);
+    put("--", 30);
+    put("!", 31);
+    put("~", 32);
+    put("CLEAR", 33);
+    put("SQRT", 34);
+    put("POW", 35);
+    put("SQRTV", 36);
+    put("STRLEN", 37);
+    put("concat", 38);
+    put("copy", 39);
+    put("val", 40);
+    put("str", 41);
+    put("sin", 42);
+    put("cos", 43);
+    put("tan", 44);
+    put("chr", 45);
+    put("pred", 46);
+    put("succ", 47);
+    put("inc", 48);
+    put("dec", 49);
+    put("sqr", 50);
+    put("while", 51);
+    put("do", 52);
+    put("return", 53);
+    put("for", 54);
+    put("switch", 55);
+    put("elseif", 56);
+    put("else", 57);
+    put(":", 58);
+    put("break", 59);
+    put("case", 60);
+    put("default", 61);
+    put("||", 62);
+    put("|", 63);
+    put("?", 64);
+    put("&&", 65);
+    put("&", 66);
+    put("<", 67);
+    put(">=", 68);
+    put("<=", 69);
+    put("!=", 70);
+    put("==", 71);
+    put(">", 72);
+    put("<<", 73);
+    put(">>", 74);
+    put(">>>", 75);
+    put("*", 76);
+    put("/", 77);
+    put("#", 78);
+    put("%", 79);
+    put("^", 80);
+    put("=", 81);
+    put("+=", 82);
+    put("-=", 83);
+    put("/=", 84);
+    put("*=", 85);
+    put("const ent", 86);
+}};
     
     private boolean archivoAbierto      = false;
     private boolean modificado          = false;
@@ -361,12 +672,30 @@ public class AnalizadorLexico extends JFrame {
         return 510;
     }
 
+    public String getTipoToken(Object[] token){
+        int idToken = (int) token[0];
+        String lexema = (String) token[1];
+        
+
+        if (idToken == -53) return "const cadena";
+        if (idToken == -54) return "binario";
+        if (idToken == -55) return "const octal";
+        if (idToken == -56) return "const hexadecimal";
+        if (idToken == -57) return "const decimal";
+        if (idToken == -58) return "const real";
+        if (idToken == -59) return "const exponencial";
+        if (idToken >= -67 && idToken <= -60){
+            return "id";
+        }
+        return lexema;
+    }
+
     public static String[][] leerRangoCSV(String archivo, int fIni, int fFin, int cIni, int cFin) throws IOException {
         List<String[]> lineasFiltradas = new ArrayList<>();
         //System.out.println("El programa está buscando en: " + System.getProperty("user.dir"));
         try {
-            InputStream is = AnalizadorLexico.class.getClassLoader().getResourceAsStream("MATRIZ_CSV.csv");
-        
+            InputStream is = AnalizadorLexico.class.getClassLoader().getResourceAsStream(archivo);
+            //System.out.println(archivo);
             if (is == null) {
                 throw new FileNotFoundException("No se encontro la matriz");
             }
@@ -748,6 +1077,101 @@ public class AnalizadorLexico extends JFrame {
         actualizarListaTokens();
         actualizarListaErrores();
         
+        //Fase 2: Analizador sintactico
+        analizarSintactico();
+    }
+
+     private void analizarSintactico(){
+        pilaSintactica.clear();
+        contadorNoTerminales.clear();
+        if (!listaTokens.isEmpty() && listaTokens.get(listaTokens.size()-1)[1].equals("$")) {
+            listaTokens.remove(listaTokens.size()-1);
+        }
+        System.out.println("--------------------START SINTAX ------------------");
+        pilaSintactica.push("$");
+        pilaSintactica.push("PROGRAMA");
+
+        int i = 0;
+        Object[] tokenFin = {0, "$", 0};
+        listaTokens.add(tokenFin);
+        // for (Object[] token : listaTokens) {
+        //     System.out.println("token -> " + token[0] + 
+        //                " | Lexema: [" + token[1] + 
+        //                "] | Línea: " + token[2] + 
+        //                " CATEGORIA : " + token[1]);
+        // }
+        while(!pilaSintactica.isEmpty() && i < listaTokens.size() ){
+            String tope = pilaSintactica.peek();
+            Object[] tokenActual = listaTokens.get(i);
+            String terminalActual = getTipoToken(tokenActual);
+            System.out.println("Pila Sintactica : " + pilaSintactica);
+            System.out.println("tope: "+tope + " , lexema actual : "+ terminalActual);
+            if (tope.equals(terminalActual)){
+                pilaSintactica.pop();
+                i++;
+                System.out.println("Match: " + terminalActual);
+            }
+            else if (noTerminales.containsKey(tope)){
+                contadorNoTerminales.put(tope, contadorNoTerminales.getOrDefault(tope, 0) + 1);
+
+                Integer fila = noTerminales.get(tope);
+                Integer columna = Terminales.get(terminalActual);
+
+                if (columna == null) {
+                    System.err.println("Error Sintáctico: Token '" + terminalActual + "' no reconocido en la tabla.");
+                    break;
+                }
+                int indiceProduccion = Integer.parseInt(matrizSintactica[fila][columna]);
+
+                if (indiceProduccion >= 500) {
+                    System.err.println("Error Sintáctico en línea " + tokenActual[2] + 
+                                    ": No se esperaba '" + terminalActual + "'");
+                    //MANDAR ERROR A LISTA
+                    Object[] datosError = {indiceProduccion,descripcionErrores.get(indiceProduccion),tokenActual[1],"Sintactico",tokenActual[2]};
+                    listaErroresSintactico.add(datosError);
+
+                    i++;
+                    if (i >= listaTokens.size()) {
+                    break; // Protección contra crasheo si el error es al final
+                }
+                    continue;
+                }
+                if (indiceProduccion == 13){
+                    System.out.println("Aplicando producción epsilon " + indiceProduccion + " para " + tope);
+                    pilaSintactica.pop();
+                    continue;
+                }
+                pilaSintactica.pop();
+                String[] simbolosProduccion = producciones[indiceProduccion];
+                // Empilar al revés, ignorando el símbolo vacío o épsilon
+                for (int k = simbolosProduccion.length - 1; k >= 0; k--) {
+                    String simbolo = simbolosProduccion[k];
+                    if (!simbolo.equals("ε") && !simbolo.isEmpty()) {
+                        pilaSintactica.push(simbolo);
+                    }
+                }
+                System.out.println("Aplicando producción " + indiceProduccion + " para " + tope+" con "+terminalActual);
+
+            }
+            else{
+                System.err.println("Error Sintáctico: El tope de la pila '" + tope + 
+                               "' no coincide con '" + terminalActual + "'");
+                 break;
+            }
+        }
+        if (pilaSintactica.isEmpty()) {
+            System.out.println("¡Análisis sintáctico exitoso!");
+        } else {
+            System.out.println("El análisis terminó con errores (Pila no vacía).");
+        }
+        imprimirEstadisticasNoTerminales();
+     }
+     private void imprimirEstadisticasNoTerminales() {
+        System.out.println("\n--- ESTADÍSTICAS DE NO TERMINALES ---");
+        // Ordenar y mostrar resultados
+        contadorNoTerminales.forEach((nombre, cantidad) -> {
+            System.out.println("No Terminal [" + nombre + "]: " + cantidad + " veces.");
+        });
     }
     
 
@@ -783,6 +1207,48 @@ public class AnalizadorLexico extends JFrame {
 
             //CONTADORES
             Sheet hojaCategorias = workbook.createSheet("CONTADORES");
+
+            // 4. NUEVA HOJA: SINTAXIS (Basada en la plantilla Hoja de Sintaxis.xlsx)
+            Sheet hojaSintaxis = workbook.createSheet("SINTAXIS");
+            String[] cabeceraSintaxis = {
+                "Errores", "PROGRAMA", "LISTA DE PARAMETROS", "EXP PAS", 
+                "CONSTANTE S/SIGNO", "CONST NUMÉRICA", "OR", "AND", 
+                "DECLARACION CONSTANTES", "FACTOR", "ELEVACION", 
+                "TERMINO PASCAL", "Simple Exp Pascal", "STATU", "Funcion", "ASIG", "ARR"
+            };
+
+            Row filaCabSintaxis = hojaSintaxis.createRow(0);
+            for (int i = 0; i < cabeceraSintaxis.length; i++) {
+                Cell celda = filaCabSintaxis.createCell(i);
+                celda.setCellValue(cabeceraSintaxis[i]);
+                celda.setCellStyle(estiloCabecera);
+                hojaSintaxis.setColumnWidth(i, 20 * 256);
+            }
+
+            // Fila de datos de Sintaxis
+            Row filaDatosSintaxis = hojaSintaxis.createRow(1);
+            
+            // Celda 0: Total de errores sintácticos
+            filaDatosSintaxis.createCell(0).setCellValue(listaErroresSintactico.size());
+
+            // Mapeo de contadores (Usando los nombres exactos de tu contadorNoTerminales)
+            // Se usa getOrDefault para poner 0 si el No Terminal no fue llamado
+            filaDatosSintaxis.createCell(1).setCellValue(contadorNoTerminales.getOrDefault("PROGRAMA", 0));
+            filaDatosSintaxis.createCell(2).setCellValue(contadorNoTerminales.getOrDefault("LISTA DE PARAMETROS", 0));
+            filaDatosSintaxis.createCell(3).setCellValue(contadorNoTerminales.getOrDefault("EXP_PAS", 0));
+            filaDatosSintaxis.createCell(4).setCellValue(contadorNoTerminales.getOrDefault("CONSTANTE S/SIGNO", 0));
+            filaDatosSintaxis.createCell(5).setCellValue(contadorNoTerminales.getOrDefault("CONST NUMERICA", 0));
+            filaDatosSintaxis.createCell(6).setCellValue(contadorNoTerminales.getOrDefault("OR", 0));
+            filaDatosSintaxis.createCell(7).setCellValue(contadorNoTerminales.getOrDefault("AND", 0));
+            filaDatosSintaxis.createCell(8).setCellValue(contadorNoTerminales.getOrDefault("DECLARACION CONSTANTES", 0));
+            filaDatosSintaxis.createCell(9).setCellValue(contadorNoTerminales.getOrDefault("FACTOR", 0));
+            filaDatosSintaxis.createCell(10).setCellValue(contadorNoTerminales.getOrDefault("ELEVACION", 0));
+            filaDatosSintaxis.createCell(11).setCellValue(contadorNoTerminales.getOrDefault("TERMINO PASCAL", 0));
+            filaDatosSintaxis.createCell(12).setCellValue(contadorNoTerminales.getOrDefault("SIMPLE EXP PASCAL", 0));
+            filaDatosSintaxis.createCell(13).setCellValue(contadorNoTerminales.getOrDefault("STATU", 0));
+            filaDatosSintaxis.createCell(14).setCellValue(contadorNoTerminales.getOrDefault("FUNCION", 0));
+            filaDatosSintaxis.createCell(15).setCellValue(contadorNoTerminales.getOrDefault("ASIG", 0));
+            filaDatosSintaxis.createCell(16).setCellValue(contadorNoTerminales.getOrDefault("ARR", 0));
 
             CellStyle estiloWrap = workbook.createCellStyle();
             org.apache.poi.ss.usermodel.Font fuenteCabecera2 = workbook.createFont();
@@ -863,8 +1329,11 @@ private void llenarDatosHoja(Sheet hoja, List<Object[]> datos) {
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) {}
         try {
             matriz = leerRangoCSV("MATRIZ_CSV.csv", 2, 93, 2, 51);
-            // System.out.println("Primer valor cargado: " + miMatriz[0][0]);
+            System.out.println("Primer valor cargado: " + matriz[0][1]);
             //System.out.println(matriz[91][28]);
+            matrizSintactica = leerRangoCSV("TABLA_SINTACTICO.csv", 2, 40, 2, 88);
+            System.out.println("primer valor en sintactico: " + matrizSintactica[38][86]);
+            System.out.println(java.util.Arrays.toString(producciones[50]));
         } catch (IOException e) {
             System.err.println("Error: No se encontró el archivo matriz.");
         }
