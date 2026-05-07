@@ -108,11 +108,11 @@ public class AnalizadorLexico extends JFrame {
         {";", "STATU", "A2"},
         {"reg", "id", "{", "id", "A3", "}", "A1"},
         {",", "id", "A3"},
-        {"var", "A4", "id", "[", "const ent", "A5", "]", "A6", "A7", ";", "A1"},
+        {"var", "A4", "id", "[", "const decimal", "A5", "]", "A6", "A7", ";", "A1"},
         {"reg", "id"},
-        {",", "const ent", "A5"},
-        {"[", "const ent", "A5", "]", "A6"},
-        {",", "A4", "id", "[", "const ent", "A5", "]", "A6", "A7"},
+        {",", "const decimal", "A5"},
+        {"[", "const decimal", "A5", "]", "A6"},
+        {",", "A4", "id", "[", "const decimal", "A5", "]", "A6", "A7"},
         {"def", "id", "LISTA DE PARAMETROS", "PROGRAMA", ";", "A1"},
         {"id", "=", "DECLARACION CONSTANTES", "A8", ";", "A1"},
         {",", "id", "=", "DECLARACION CONSTANTES", "A8"}, 
@@ -141,8 +141,8 @@ public class AnalizadorLexico extends JFrame {
         {"OR"},
         {"{", "STATU", "A2", "}"},
         {"while", "(", "OR", ")", "STATU"},
-        {"do", "STATU", "while", "(", "OR", ")", ";"},
-        {"return", "OR", ";"},
+        {"do", "STATU", "while", "(", "OR", ")"},
+        {"return", "OR"},
         {"for", "(", "OR", "B3", ")", "STATU"},
         {",", "OR", "B3"},
         {":", "OR"},
@@ -218,7 +218,6 @@ public class AnalizadorLexico extends JFrame {
         {"/="}, // Índice 112: /=
         {"*="}, // Índice 113: *=
     };
-    
 
     public final Map<String, Integer> valoresPalabras = new HashMap<>() {{
     put("true", -69);
@@ -555,7 +554,7 @@ public class AnalizadorLexico extends JFrame {
     }
     public void sumarAGrupo(int estado) {
         switch (estado) {
-            case -1,-5,-8,-11,-21:
+            case -1,-5,-8,-11,-21,-141:
                 categorias[OPERADORES_MATEMATICOS]++;
                 break;
             case -2,-4:
@@ -894,6 +893,9 @@ public class AnalizadorLexico extends JFrame {
         for (Object[] tokenError : listaErrores){
             errorTableModel.addRow(tokenError);
         }
+        for (Object[] tokenErrorSintaxis : listaErroresSintactico) {
+            errorTableModel.addRow(tokenErrorSintaxis);
+        }
     }
 
 
@@ -1075,7 +1077,6 @@ public class AnalizadorLexico extends JFrame {
         }
         actualizarTablaContadores();
         actualizarListaTokens();
-        actualizarListaErrores();
         
         //Fase 2: Analizador sintactico
         analizarSintactico();
@@ -1084,6 +1085,7 @@ public class AnalizadorLexico extends JFrame {
      private void analizarSintactico(){
         pilaSintactica.clear();
         contadorNoTerminales.clear();
+        listaErroresSintactico.clear();
         if (!listaTokens.isEmpty() && listaTokens.get(listaTokens.size()-1)[1].equals("$")) {
             listaTokens.remove(listaTokens.size()-1);
         }
@@ -1154,9 +1156,12 @@ public class AnalizadorLexico extends JFrame {
 
             }
             else{
+                String descripcion = "El tope de la pila '" + tope + "' no coincide con el lexema '" + terminalActual + "'";
                 System.err.println("Error Sintáctico: El tope de la pila '" + tope + 
                                "' no coincide con '" + terminalActual + "'");
-                 break;
+                Object[] datosError = {541, descripcion, tokenActual[1], "Sintactico", tokenActual[2]};
+                listaErroresSintactico.add(datosError);
+                break;
             }
         }
         if (pilaSintactica.isEmpty()) {
@@ -1164,11 +1169,24 @@ public class AnalizadorLexico extends JFrame {
         } else {
             System.out.println("El análisis terminó con errores (Pila no vacía).");
         }
+        actualizarListaErrores();
         imprimirEstadisticasNoTerminales();
      }
+
      private void imprimirEstadisticasNoTerminales() {
         System.out.println("\n--- ESTADÍSTICAS DE NO TERMINALES ---");
         // Ordenar y mostrar resultados
+        // 1. Mostrar Lista de Errores si existen
+        if (!listaErroresSintactico.isEmpty()) {
+            System.out.println("\n--- LISTA DE ERRORES ENCONTRADOS ---");
+            listaErroresSintactico.forEach(error -> {
+                // Estructura: {Código, Descripción, Lexema, Tipo, Línea}
+                System.out.printf("Error [%s]: %s | Lexema: '%s' | Línea: %s%n", 
+                    error[0], error[1], error[2], error[4]);
+            });
+        } else {
+            System.out.println("\nNo se encontraron errores sintácticos.");
+        }
         contadorNoTerminales.forEach((nombre, cantidad) -> {
             System.out.println("No Terminal [" + nombre + "]: " + cantidad + " veces.");
         });
@@ -1203,7 +1221,17 @@ public class AnalizadorLexico extends JFrame {
             Sheet hojaErrores = workbook.createSheet("ERRORES");
             String[] cabecera2 = {"Token", "Descripcion", "Lexema", "Tipo de error", "Linea"};
             crearFilaCabecera(hojaErrores, cabecera2, estiloCabecera);
-            llenarDatosHoja(hojaErrores, listaErrores);
+        
+            List<Object[]> erroresUnificados = new ArrayList<>();
+
+            if (listaErrores != null) {
+                erroresUnificados.addAll(listaErrores);
+            }
+            if (listaErroresSintactico != null) {
+                erroresUnificados.addAll(listaErroresSintactico);
+            }
+            // Mandamos la lista unificada a la hoja
+            llenarDatosHoja(hojaErrores, erroresUnificados);
 
             //CONTADORES
             Sheet hojaCategorias = workbook.createSheet("CONTADORES");
