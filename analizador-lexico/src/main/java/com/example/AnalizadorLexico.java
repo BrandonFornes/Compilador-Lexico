@@ -91,7 +91,7 @@ public class AnalizadorLexico extends JFrame {
         "replace", "split", "push", "shift", "in", "of", "splice", "concat", "find", "findIndex", "filter", "map", "sort",
         "reverse", 
         //PALABRAS AGREGADAS PARA FASE 2 : SINTAXIS
-        "main","console.read","console.log","def","elseif","default","return","case","var","reg",
+        "main","Console.read","Console.log","def","elseif","default","return","case","var","reg",
         //palabras funcion
         "CLEAR", "SQRT", "POW", "SQRTV", "STRLEN","copy", "val", "str", "sin", "cos", "tan","chr","pred", "succ",
         "inc", "dec","sqr"
@@ -132,9 +132,9 @@ public class AnalizadorLexico extends JFrame {
         {"const decimal"},
         {"const octal"},
         {"const hexadecimal"},
-        {"console.read", "(", "OR", "B1", ")"},
+        {"Console.read", "(", "OR", "B1", ")"},
         {",", "OR", "B1"},
-        {"console.log", "(", "OR", ")"},
+        {"Console.log", "(", "OR", ")"},
         {"if", "(", "OR", ")", "STATU", "B2"},
         {"elseif", "(", "OR", ")", "STATU", "B2"},
         {"else", "STATU"},
@@ -229,7 +229,7 @@ public class AnalizadorLexico extends JFrame {
     put("for", -75);
     put("do", -76);
     put("while", -77);
-    put("console.log", -78);
+    put("Console.log", -78);
     put("forEach", -79);
     put("break", -80);
     put("continue", -81);
@@ -267,7 +267,7 @@ public class AnalizadorLexico extends JFrame {
     put("sort", -113);
     put("reverse", -114);
     put("main",-115);
-    put("console.read",-116);
+    put("Console.read",-116);
     put("def",-117);
     put("elseif",-118);
     put("default",-119);
@@ -406,8 +406,8 @@ public class AnalizadorLexico extends JFrame {
     put("false", 23);
     put("const exponencial", 24);
     put("null", 25);
-    put("console.read", 26);
-    put("console.log", 27);
+    put("Console.read", 26);
+    put("Console.log", 27);
     put("if", 28);
     put("++", 29);
     put("--", 30);
@@ -644,10 +644,12 @@ public class AnalizadorLexico extends JFrame {
             case -71:
                 categorias[CONSTANTES_NULA]++;
                 break;
-            case -72,-73,-74,-75,-76,-77,-78,-79,-80,-81,-82,-83,-84,-85,-86,
-                 -87,-88,-89,-90,-91,-92,-93,-94,-95,-96,-97,-98,-99,
-                 -100, -101, -102, -103, -104, -105, -106, -107, -108,
-                 -109, -110, -111, -112, -113, -114:
+            case -72, -73, -74, -75, -76, -77, -78, -79, -80, -81, -82, -83, -84, -85, -86,
+                -87, -88, -89, -90, -91, -92, -93, -94, -95, -96, -97, -98, -99,
+                -100, -101, -102, -103, -104, -105, -106, -107, -108, -109, -110, 
+                -111, -112, -113, -114, -115, -116, -117, -118, -119, -120, -121, 
+                -122, -123, -124, -125, -126, -127, -128, -129, -130, -131, -132, 
+                -133, -134, -135, -136, -137, -138, -139, -140:
                 categorias[PALABRAS_RESERVADAS]++;
                 break;
 
