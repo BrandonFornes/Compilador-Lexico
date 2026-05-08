@@ -7,6 +7,8 @@ import javax.swing.table.*;
 import java.awt.*;
 import java.awt.Color;
 import java.awt.Font;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
 import java.io.*;
 import java.util.*;
 import java.util.List;
@@ -823,6 +825,53 @@ public class AnalizadorLexico extends JFrame {
         scroll.getViewport().setBackground(BG_CODE);
         
         p.add(scroll, BorderLayout.CENTER);
+
+        // Interceptar la tecla ENTER para agregar nuevas filas
+        InputMap im = codeTable.getInputMap(JTable.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
+        ActionMap am = codeTable.getActionMap();
+
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "addNewRow");
+        am.put("addNewRow", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (codeTable.isEditing()) {
+                    codeTable.getCellEditor().stopCellEditing();
+                }
+                int currentRow = codeTable.getSelectedRow();
+                int rowCount = codeTableModel.getRowCount();
+
+                // Si presionamos Enter en la última fila o en cualquier posición
+                // Insertamos una fila vacía justo debajo de la actual
+                codeTableModel.insertRow(currentRow + 1, new Object[]{currentRow + 2, ""});
+                
+                // Seleccionamos la nueva fila y la columna de código
+                codeTable.setRowSelectionInterval(currentRow + 1, currentRow + 1);
+                codeTable.setColumnSelectionInterval(1, 1);
+                
+                // Iniciamos el modo edición automáticamente en la nueva fila
+                codeTable.editCellAt(currentRow + 1, 1);
+                Component editor = codeTable.getEditorComponent();
+                if (editor != null) {
+                    editor.requestFocus();
+                }
+                
+                // Forzamos la actualización de todos los números de línea
+                actualizarNumerosDeLinea();
+            }
+        });
+        //METODO PARA BORRAR lineas
+        im.put(KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE,0), "deleteRow");
+        am.put("deleteRow", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                //System.out.println("ENTRO");
+                int row = codeTable.getSelectedRow();
+                if (row != -1 && codeTableModel.getRowCount() > 1) {
+                    codeTableModel.removeRow(row);
+                    actualizarNumerosDeLinea();
+                }
+            }
+        });
         return p;
     }
 
@@ -830,7 +879,7 @@ public class AnalizadorLexico extends JFrame {
         JPanel p = new JPanel(new BorderLayout());
         
         JPanel panelErrores = new JPanel(new BorderLayout());
-        JLabel lblErr = new JLabel("ERRORES LÉXICOS");
+        JLabel lblErr = new JLabel("ERRORES");
         lblErr.setForeground(Color.BLACK);
         panelErrores.add(lblErr, BorderLayout.NORTH);
         
@@ -1091,7 +1140,7 @@ public class AnalizadorLexico extends JFrame {
         if (!listaTokens.isEmpty() && listaTokens.get(listaTokens.size()-1)[1].equals("$")) {
             listaTokens.remove(listaTokens.size()-1);
         }
-        System.out.println("--------------------START SINTAX ------------------");
+        //System.out.println("--------------------START SINTAX ------------------");
         pilaSintactica.push("$");
         pilaSintactica.push("PROGRAMA");
 
@@ -1108,12 +1157,12 @@ public class AnalizadorLexico extends JFrame {
             String tope = pilaSintactica.peek();
             Object[] tokenActual = listaTokens.get(i);
             String terminalActual = getTipoToken(tokenActual);
-            System.out.println("Pila Sintactica : " + pilaSintactica);
-            System.out.println("tope: "+tope + " , lexema actual : "+ terminalActual);
+            //System.out.println("Pila Sintactica : " + pilaSintactica);
+            //System.out.println("tope: "+tope + " , lexema actual : "+ terminalActual);
             if (tope.equals(terminalActual)){
                 pilaSintactica.pop();
                 i++;
-                System.out.println("Match: " + terminalActual);
+                //System.out.println("Match: " + terminalActual);
             }
             else if (noTerminales.containsKey(tope)){
                 contadorNoTerminales.put(tope, contadorNoTerminales.getOrDefault(tope, 0) + 1);
@@ -1122,14 +1171,14 @@ public class AnalizadorLexico extends JFrame {
                 Integer columna = Terminales.get(terminalActual);
 
                 if (columna == null) {
-                    System.err.println("Error Sintáctico: Token '" + terminalActual + "' no reconocido en la tabla.");
+                    //System.err.println("Error Sintáctico: Token '" + terminalActual + "' no reconocido en la tabla.");
                     break;
                 }
                 int indiceProduccion = Integer.parseInt(matrizSintactica[fila][columna]);
 
                 if (indiceProduccion >= 500) {
-                    System.err.println("Error Sintáctico en línea " + tokenActual[2] + 
-                                    ": No se esperaba '" + terminalActual + "'");
+                    // System.err.println("Error Sintáctico en línea " + tokenActual[2] + 
+                    //                 ": No se esperaba '" + terminalActual + "'");
                     //MANDAR ERROR A LISTA
                     Object[] datosError = {indiceProduccion,descripcionErrores.get(indiceProduccion),tokenActual[1],"Sintactico",tokenActual[2]};
                     listaErroresSintactico.add(datosError);
@@ -1141,7 +1190,7 @@ public class AnalizadorLexico extends JFrame {
                     continue;
                 }
                 if (indiceProduccion == 13){
-                    System.out.println("Aplicando producción epsilon " + indiceProduccion + " para " + tope);
+                    //System.out.println("Aplicando producción epsilon " + indiceProduccion + " para " + tope);
                     pilaSintactica.pop();
                     continue;
                 }
@@ -1154,7 +1203,7 @@ public class AnalizadorLexico extends JFrame {
                         pilaSintactica.push(simbolo);
                     }
                 }
-                System.out.println("Aplicando producción " + indiceProduccion + " para " + tope+" con "+terminalActual);
+                //System.out.println("Aplicando producción " + indiceProduccion + " para " + tope+" con "+terminalActual);
 
             }
             else{
@@ -1176,21 +1225,21 @@ public class AnalizadorLexico extends JFrame {
      }
 
      private void imprimirEstadisticasNoTerminales() {
-        System.out.println("\n--- ESTADÍSTICAS DE NO TERMINALES ---");
+        //System.out.println("\n--- ESTADÍSTICAS DE NO TERMINALES ---");
         // Ordenar y mostrar resultados
         // 1. Mostrar Lista de Errores si existen
         if (!listaErroresSintactico.isEmpty()) {
             System.out.println("\n--- LISTA DE ERRORES ENCONTRADOS ---");
             listaErroresSintactico.forEach(error -> {
                 // Estructura: {Código, Descripción, Lexema, Tipo, Línea}
-                System.out.printf("Error [%s]: %s | Lexema: '%s' | Línea: %s%n", 
-                    error[0], error[1], error[2], error[4]);
+                // System.out.printf("Error [%s]: %s | Lexema: '%s' | Línea: %s%n", 
+                //     error[0], error[1], error[2], error[4]);
             });
         } else {
-            System.out.println("\nNo se encontraron errores sintácticos.");
+            //System.out.println("\nNo se encontraron errores sintácticos.");
         }
         contadorNoTerminales.forEach((nombre, cantidad) -> {
-            System.out.println("No Terminal [" + nombre + "]: " + cantidad + " veces.");
+            //System.out.println("No Terminal [" + nombre + "]: " + cantidad + " veces.");
         });
     }
     
@@ -1359,11 +1408,11 @@ private void llenarDatosHoja(Sheet hoja, List<Object[]> datos) {
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) {}
         try {
             matriz = leerRangoCSV("MATRIZ_CSV.csv", 2, 93, 2, 51);
-            System.out.println("Primer valor cargado: " + matriz[0][1]);
+            //System.out.println("Primer valor cargado: " + matriz[0][1]);
             //System.out.println(matriz[91][28]);
             matrizSintactica = leerRangoCSV("TABLA_SINTACTICO.csv", 2, 40, 2, 88);
-            System.out.println("primer valor en sintactico: " + matrizSintactica[38][86]);
-            System.out.println(java.util.Arrays.toString(producciones[50]));
+            //System.out.println("primer valor en sintactico: " + matrizSintactica[38][86]);
+            //System.out.println(java.util.Arrays.toString(producciones[50]));
         } catch (IOException e) {
             System.err.println("Error: No se encontró el archivo matriz.");
         }
