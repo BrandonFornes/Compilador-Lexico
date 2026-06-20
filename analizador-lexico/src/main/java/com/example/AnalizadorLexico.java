@@ -1157,12 +1157,12 @@ public class AnalizadorLexico extends JFrame {
             String tope = pilaSintactica.peek();
             Object[] tokenActual = listaTokens.get(i);
             String terminalActual = getTipoToken(tokenActual);
-            //System.out.println("Pila Sintactica : " + pilaSintactica);
-            //System.out.println("tope: "+tope + " , lexema actual : "+ terminalActual);
+            System.out.println("Pila Sintactica : " + pilaSintactica);
+            System.out.println("tope: "+tope + " , lexema actual : "+ terminalActual);
             if (tope.equals(terminalActual)){
                 pilaSintactica.pop();
                 i++;
-                //System.out.println("Match: " + terminalActual);
+                System.out.println("Match: " + terminalActual);
             }
             else if (noTerminales.containsKey(tope)){
                 contadorNoTerminales.put(tope, contadorNoTerminales.getOrDefault(tope, 0) + 1);
@@ -1171,14 +1171,14 @@ public class AnalizadorLexico extends JFrame {
                 Integer columna = Terminales.get(terminalActual);
 
                 if (columna == null) {
-                    //System.err.println("Error Sintáctico: Token '" + terminalActual + "' no reconocido en la tabla.");
+                    System.err.println("Error Sintáctico: Token '" + terminalActual + "' no reconocido en la tabla.");
                     break;
                 }
                 int indiceProduccion = Integer.parseInt(matrizSintactica[fila][columna]);
 
                 if (indiceProduccion >= 500) {
-                    // System.err.println("Error Sintáctico en línea " + tokenActual[2] + 
-                    //                 ": No se esperaba '" + terminalActual + "'");
+                     System.err.println("Error Sintáctico en línea " + tokenActual[2] + 
+                                     ": No se esperaba '" + terminalActual + "'");
                     //MANDAR ERROR A LISTA
                     Object[] datosError = {indiceProduccion,descripcionErrores.get(indiceProduccion),tokenActual[1],"Sintactico",tokenActual[2]};
                     listaErroresSintactico.add(datosError);
@@ -1190,7 +1190,7 @@ public class AnalizadorLexico extends JFrame {
                     continue;
                 }
                 if (indiceProduccion == 13){
-                    //System.out.println("Aplicando producción epsilon " + indiceProduccion + " para " + tope);
+                    System.out.println("Aplicando producción epsilon " + indiceProduccion + " para " + tope);
                     pilaSintactica.pop();
                     continue;
                 }
@@ -1203,7 +1203,7 @@ public class AnalizadorLexico extends JFrame {
                         pilaSintactica.push(simbolo);
                     }
                 }
-                //System.out.println("Aplicando producción " + indiceProduccion + " para " + tope+" con "+terminalActual);
+                System.out.println("Aplicando producción " + indiceProduccion + " para " + tope+" con "+terminalActual);
 
             }
             else{
