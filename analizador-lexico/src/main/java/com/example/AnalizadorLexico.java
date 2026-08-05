@@ -38,7 +38,7 @@ public class AnalizadorLexico extends JFrame {
     private static String[][] matrizSintactica;
     private Map<String, Integer> contadorNoTerminales = new HashMap<>();
     Stack<String> pilaSintactica = new Stack<>();
-    private int[] categorias = new int[32];
+    private int[] categorias = new int[33];
     private final int ERRORES                        = 0;
     private final int ID_CADENA                       = 1;
     private final int ID_NUMERICA_BINARIO             = 2;
@@ -71,7 +71,8 @@ public class AnalizadorLexico extends JFrame {
     private final int OPERADOR_TERNARIO               = 29;
     private final int OPERADORES_ASIGNACION           = 30;
     private final int OPERADORES_AGRUPAMIENTO         = 31;
-    
+    private final int ID_REGISTRO                      = 8;
+
     private final String[] nombresGrupos = {
     "ERRORES", "ID_CADENA", "ID_NUMERICA_BINARIO", "ID_NUMERICA_DECIMAL",
     "ID_NUMERICA_OCTAL", "ID_NUMERICA_HEXADECIMAL", "ID_REAL", "ID_EXPONENCIAL",
@@ -82,7 +83,7 @@ public class AnalizadorLexico extends JFrame {
     "OPERADORES_LOGICOS_BINARIOS", "OPERADORES_CONTROL", "OPERADORES_MATEMATICOS",
     "OPERADOR_EXPONENTE", "OPERADORES_TURNO", "OPERADORES_RELACIONALES",
     "OPERADORES_SIN_IGUALDAD", "OPERADORES_LOGICOS", "OPERADOR_TERNARIO",
-    "OPERADORES_ASIGNACION", "OPERADORES_AGRUPAMIENTO"
+    "OPERADORES_ASIGNACION", "OPERADORES_AGRUPAMIENTO", "ID_REGISTRO"
     };
     
 
@@ -110,11 +111,11 @@ public class AnalizadorLexico extends JFrame {
         {";", "STATU", "A2"},
         {"reg", "id", "{", "id", "A3", "}", "A1"},
         {",", "id", "A3"},
-        {"var", "A4", "id", "[", "const decimal", "A5", "]", "A6", "A7", ";", "A1"},
+        {"var", "A4", "id", "A6", "A7", ";", "A1"},
         {"reg", "id"},
         {",", "const decimal", "A5"},
         {"[", "const decimal", "A5", "]", "A6"},
-        {",", "A4", "id", "[", "const decimal", "A5", "]", "A6", "A7"},
+        {",", "A4", "id", "A6", "A7"},
         {"def", "id", "LISTA DE PARAMETROS", "PROGRAMA", ";", "A1"},
         {"id", "=", "DECLARACION CONSTANTES", "A8", ";", "A1"},
         {",", "id", "=", "DECLARACION CONSTANTES", "A8"}, 
@@ -654,6 +655,8 @@ public class AnalizadorLexico extends JFrame {
                 -133, -134, -135, -136, -137, -138, -139, -140:
                 categorias[PALABRAS_RESERVADAS]++;
                 break;
+            case -142:
+                categorias[ID_REGISTRO]++;
 
             case 500,501,502,503,504,505,506,507,508,509,510,511,512,513:
                 categorias[ERRORES]++;
@@ -672,7 +675,10 @@ public class AnalizadorLexico extends JFrame {
         else if (nulas.contains(lexema)){
             return valoresPalabras.get(lexema);
         }
-        return 510;
+        else if(lexema.contains(".")){
+            return 510;
+        }
+        return -142;
     }
 
     public String getTipoToken(Object[] token){
