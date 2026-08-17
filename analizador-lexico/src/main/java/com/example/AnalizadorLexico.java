@@ -71,7 +71,7 @@ public class AnalizadorLexico extends JFrame {
     private final int OPERADOR_TERNARIO               = 29;
     private final int OPERADORES_ASIGNACION           = 30;
     private final int OPERADORES_AGRUPAMIENTO         = 31;
-    private final int ID_REGISTRO                      = 8;
+    private final int ID_REGISTRO                      = 32;
 
     private final String[] nombresGrupos = {
     "ERRORES", "ID_CADENA", "ID_NUMERICA_BINARIO", "ID_NUMERICA_DECIMAL",
@@ -93,9 +93,7 @@ public class AnalizadorLexico extends JFrame {
         "toUpperCase", "length", "trim", "charAt", "startsWith", "endsWith", "indexOf", "Includes","slice",
         "replace", "split", "push", "shift", "in", "of", "splice", "concat", "find", "findIndex", "filter", "map", "sort",
         "reverse", 
-        //PALABRAS AGREGADAS PARA FASE 2 : SINTAXIS
         "main","Console.read","Console.log","def","elseif","default","return","case","var","reg",
-        //palabras funcion
         "CLEAR", "SQRT", "POW", "SQRTV", "STRLEN","copy", "val", "str", "sin", "cos", "tan","chr","pred", "succ",
         "inc", "dec","sqr"
     ));
@@ -106,7 +104,7 @@ public class AnalizadorLexico extends JFrame {
         "null"
     ));
     private static final String[][] producciones = {
-        {}, // Índice 0
+        {},
         {"A1", "main", "(", ")", "{", "STATU", "A2", "}"},
         {";", "STATU", "A2"},
         {"reg", "id", "{", "id", "A3", "}", "A1"},
@@ -657,7 +655,7 @@ public class AnalizadorLexico extends JFrame {
                 break;
             case -142:
                 categorias[ID_REGISTRO]++;
-
+                break;
             case 500,501,502,503,504,505,506,507,508,509,510,511,512,513:
                 categorias[ERRORES]++;
                 break;
@@ -694,6 +692,9 @@ public class AnalizadorLexico extends JFrame {
         if (idToken == -58) return "const real";
         if (idToken == -59) return "const exponencial";
         if (idToken >= -67 && idToken <= -60){
+            return "id";
+        }
+        if (idToken == -142){
             return "id";
         }
         return lexema;
