@@ -3,6 +3,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import javax.swing.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.*;
 import java.awt.*;
 import java.awt.Color;
@@ -34,6 +35,8 @@ public class AnalizadorLexico extends JFrame {
     private ArrayList<Object[]> listaTokens = new ArrayList<>();
     private ArrayList<Object[]> listaErrores = new ArrayList<>();
     private ArrayList<Object[]> listaErroresSintactico = new ArrayList<>();
+    private ArrayList<Object[]> ListaCambiosDeclaracion = new ArrayList<>();
+    private boolean EsDeclaracion = true;
     private static String[][] matriz;
     private static String[][] matrizSintactica;
     private Map<String, Integer> contadorNoTerminales = new HashMap<>();
@@ -48,42 +51,43 @@ public class AnalizadorLexico extends JFrame {
     private final int ID_REAL                         = 6;
     private final int ID_EXPONENCIAL                  = 7;
     private final int ID_BOOLEANAS                    = 8;
-    private final int COMENTARIOS                     = 9;
-    private final int PALABRAS_RESERVADAS             = 10;
-    private final int CONSTANTES_CADENA               = 11;
-    private final int CONSTANTES_NUMERICA_BINARIO     = 12;
-    private final int CONSTANTES_NUMERICA_DECIMAL     = 13;
-    private final int CONSTANTES_NUMERICA_OCTAL       = 14;
-    private final int CONSTANTES_NUMERICA_HEXADECIMAL = 15;
-    private final int CONSTANTES_REAL                 = 16;
-    private final int CONSTANTES_EXPONENCIAL          = 17;
-    private final int CONSTANTES_BOOLEANAS            = 18;
-    private final int CONSTANTES_NULA                 = 19;
-    private final int OPERADORES_POSTFIX              = 20;
-    private final int OPERADORES_LOGICOS_BINARIOS     = 21;
-    private final int OPERADORES_CONTROL              = 22;
-    private final int OPERADORES_MATEMATICOS          = 23;
-    private final int OPERADOR_EXPONENTE              = 24;
-    private final int OPERADORES_TURNO                = 25;
-    private final int OPERADORES_RELACIONALES         = 26;
-    private final int OPERADORES_SIN_IGUALDAD         = 27;
-    private final int OPERADORES_LOGICOS              = 28;
-    private final int OPERADOR_TERNARIO               = 29;
-    private final int OPERADORES_ASIGNACION           = 30;
-    private final int OPERADORES_AGRUPAMIENTO         = 31;
-    private final int ID_REGISTRO                      = 32;
+    private final int ID_REGISTRO                      = 9;
+    private final int COMENTARIOS                     = 10;
+    private final int PALABRAS_RESERVADAS             = 11;
+    private final int CONSTANTES_CADENA               = 12;
+    private final int CONSTANTES_NUMERICA_BINARIO     = 13;
+    private final int CONSTANTES_NUMERICA_DECIMAL     = 14;
+    private final int CONSTANTES_NUMERICA_OCTAL       = 15;
+    private final int CONSTANTES_NUMERICA_HEXADECIMAL = 16;
+    private final int CONSTANTES_REAL                 = 17;
+    private final int CONSTANTES_EXPONENCIAL          = 18;
+    private final int CONSTANTES_BOOLEANAS            = 19;
+    private final int CONSTANTES_NULA                 = 20;
+    private final int OPERADORES_POSTFIX              = 21;
+    private final int OPERADORES_LOGICOS_BINARIOS     = 22;
+    private final int OPERADORES_CONTROL              = 23;
+    private final int OPERADORES_MATEMATICOS          = 24;
+    private final int OPERADOR_EXPONENTE              = 25;
+    private final int OPERADORES_TURNO                = 26;
+    private final int OPERADORES_RELACIONALES         = 27;
+    private final int OPERADORES_SIN_IGUALDAD         = 28;
+    private final int OPERADORES_LOGICOS              = 29;
+    private final int OPERADOR_TERNARIO               = 30;
+    private final int OPERADORES_ASIGNACION           = 31;
+    private final int OPERADORES_AGRUPAMIENTO         = 32;
+    
 
     private final String[] nombresGrupos = {
     "ERRORES", "ID_CADENA", "ID_NUMERICA_BINARIO", "ID_NUMERICA_DECIMAL",
     "ID_NUMERICA_OCTAL", "ID_NUMERICA_HEXADECIMAL", "ID_REAL", "ID_EXPONENCIAL",
-    "ID_BOOLEANAS", "COMENTARIOS", "PALABRAS_RESERVADAS", "CONSTANTES_CADENA",
+    "ID_BOOLEANAS","ID_REGISTRO", "COMENTARIOS", "PALABRAS_RESERVADAS", "CONSTANTES_CADENA",
     "CONSTANTES_NUMERICA_BINARIO", "CONSTANTES_NUMERICA_DECIMAL", "CONSTANTES_NUMERICA_OCTAL",
     "CONSTANTES_NUMERICA_HEXADECIMAL", "CONSTANTES_REAL", "CONSTANTES_EXPONENCIAL",
     "CONSTANTES_BOOLEANAS", "CONSTANTES_NULA", "OPERADORES_POSTFIX",
     "OPERADORES_LOGICOS_BINARIOS", "OPERADORES_CONTROL", "OPERADORES_MATEMATICOS",
     "OPERADOR_EXPONENTE", "OPERADORES_TURNO", "OPERADORES_RELACIONALES",
     "OPERADORES_SIN_IGUALDAD", "OPERADORES_LOGICOS", "OPERADOR_TERNARIO",
-    "OPERADORES_ASIGNACION", "OPERADORES_AGRUPAMIENTO", "ID_REGISTRO"
+    "OPERADORES_ASIGNACION", "OPERADORES_AGRUPAMIENTO"
     };
     
 
@@ -105,14 +109,14 @@ public class AnalizadorLexico extends JFrame {
     ));
     private static final String[][] producciones = {
         {},
-        {"A1", "main", "(", ")", "{", "STATU", "A2", "}"},
+        {"A1", "main", "(", ")","800", "{", "STATU", "A2","801", "}"},
         {";", "STATU", "A2"},
         {"reg", "id", "{", "id", "A3", "}", "A1"},
         {",", "id", "A3"},
         {"var", "A4", "id", "A6", "A7", ";", "A1"},
         {"reg", "id"},
         {",", "const decimal", "A5"},
-        {"[", "const decimal", "A5", "]", "A6"},
+        {"[", "const decimal", "A5", "]"},
         {",", "A4", "id", "A6", "A7"},
         {"def", "id", "LISTA DE PARAMETROS", "PROGRAMA", ";", "A1"},
         {"id", "=", "DECLARACION CONSTANTES", "A8", ";", "A1"},
@@ -758,12 +762,16 @@ public class AnalizadorLexico extends JFrame {
         JButton btnXLS = new JButton("Crear XLS");
         btnXLS.addActionListener(e -> crearXLS());
 
+        JButton btntxtAvance1 = new JButton("Crear txt Avance 1");
+        btntxtAvance1.addActionListener(e -> ExportarAvance1());
+
         fileNameLabel = new JLabel(" Sin archivo ");
         fileNameLabel.setForeground(TEXT_MAIN);
 
         bar.add(btnAbrir);
         bar.add(btnCompilar);
         bar.add(btnXLS);
+        bar.add(btntxtAvance1);
         bar.add(fileNameLabel);
         
         return bar;
@@ -1144,6 +1152,7 @@ public class AnalizadorLexico extends JFrame {
         pilaSintactica.clear();
         contadorNoTerminales.clear();
         listaErroresSintactico.clear();
+        ListaCambiosDeclaracion.clear();
         if (!listaTokens.isEmpty() && listaTokens.get(listaTokens.size()-1)[1].equals("$")) {
             listaTokens.remove(listaTokens.size()-1);
         }
@@ -1164,8 +1173,32 @@ public class AnalizadorLexico extends JFrame {
             String tope = pilaSintactica.peek();
             Object[] tokenActual = listaTokens.get(i);
             String terminalActual = getTipoToken(tokenActual);
-            System.out.println("Pila Sintactica : " + pilaSintactica);
-            System.out.println("tope: "+tope + " , lexema actual : "+ terminalActual);
+            //System.out.println("Pila Sintactica : " + pilaSintactica);
+            //System.out.println("tope: "+tope + " , lexema actual : "+ terminalActual);
+
+            if (tope.equals("800")){
+                EsDeclaracion = false;
+                Object[] nuevaLinea = {tokenActual[2], "Declaracion = falso" };
+                Object[] nuevaLinea2 = {tokenActual[2], "Ejecucion = true" };
+                ListaCambiosDeclaracion.add(nuevaLinea);
+                ListaCambiosDeclaracion.add(nuevaLinea2);
+                System.out.println("entrando a ejecucion");
+                pilaSintactica.pop();
+                continue;
+            }
+
+            if (tope.equals("801")){
+                EsDeclaracion = true;
+                Object[] nuevaLinea2 = {tokenActual[2], "Ejecucion = false" };
+                Object[] nuevaLinea = {tokenActual[2], "Declaracion = true" };
+                ListaCambiosDeclaracion.add(nuevaLinea2);
+                ListaCambiosDeclaracion.add(nuevaLinea);
+                System.out.println("Volviendo a declaracion");
+                pilaSintactica.pop();
+                continue;
+            }
+
+
             if (tope.equals(terminalActual)){
                 pilaSintactica.pop();
                 i++;
@@ -1179,6 +1212,7 @@ public class AnalizadorLexico extends JFrame {
 
                 if (columna == null) {
                     System.err.println("Error Sintáctico: Token '" + terminalActual + "' no reconocido en la tabla.");
+                    //TODO Mandarlo a lista aunque no deberia ocurrir en pruebas
                     break;
                 }
                 int indiceProduccion = Integer.parseInt(matrizSintactica[fila][columna]);
@@ -1189,6 +1223,7 @@ public class AnalizadorLexico extends JFrame {
                     //MANDAR ERROR A LISTA
                     Object[] datosError = {indiceProduccion,descripcionErrores.get(indiceProduccion),tokenActual[1],"Sintactico",tokenActual[2]};
                     listaErroresSintactico.add(datosError);
+                    //categorias[ERRORES]++;
 
                     i++;
                     if (i >= listaTokens.size()) {
@@ -1210,7 +1245,7 @@ public class AnalizadorLexico extends JFrame {
                         pilaSintactica.push(simbolo);
                     }
                 }
-                System.out.println("Aplicando producción " + indiceProduccion + " para " + tope+" con "+terminalActual);
+                //System.out.println("Aplicando producción " + indiceProduccion + " para " + tope+" con "+terminalActual);
 
             }
             else{
@@ -1229,6 +1264,9 @@ public class AnalizadorLexico extends JFrame {
         }
         actualizarListaErrores();
         imprimirEstadisticasNoTerminales();
+        for (Object[] elemento : ListaCambiosDeclaracion) {
+            System.out.println("linea: " + elemento[0] + " ocurrio : " + elemento[1]);
+        }
      }
 
      private void imprimirEstadisticasNoTerminales() {
@@ -1236,7 +1274,7 @@ public class AnalizadorLexico extends JFrame {
         // Ordenar y mostrar resultados
         // 1. Mostrar Lista de Errores si existen
         if (!listaErroresSintactico.isEmpty()) {
-            System.out.println("\n--- LISTA DE ERRORES ENCONTRADOS ---");
+            //System.out.println("\n--- LISTA DE ERRORES ENCONTRADOS ---");
             listaErroresSintactico.forEach(error -> {
                 // Estructura: {Código, Descripción, Lexema, Tipo, Línea}
                 // System.out.printf("Error [%s]: %s | Lexema: '%s' | Línea: %s%n", 
@@ -1410,6 +1448,56 @@ private void llenarDatosHoja(Sheet hoja, List<Object[]> datos) {
         hoja.autoSizeColumn(i);
     }
 }
+    //Ambito
+    private void ExportarAvance1() {
+        // Configuramos el JFileChooser
+        JFileChooser fc = new JFileChooser();
+        fc.setDialogTitle("Exportar Avance a TXT");
+        
+        // Filtro para que por defecto busque/guarde con extensión .txt
+        fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
+
+        // Mostrar la ventana de diálogo para guardar. 
+        // 'this' asume que el método está dentro de un JFrame o JPanel.
+        if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File archivo = fc.getSelectedFile();
+            
+            // Asegurarnos de que el archivo termine con la extensión .txt
+            if (!archivo.getName().toLowerCase().endsWith(".txt")) {
+                archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
+            }
+
+            // Procedemos a escribir el archivo en la ruta seleccionada
+            try (FileWriter fw = new FileWriter(archivo);
+                 BufferedWriter bw = new BufferedWriter(fw);
+                 PrintWriter out = new PrintWriter(bw)) {
+
+                out.println("Linea: 1 | Ocurrió: Declaracion = true ");
+
+                for (Object[] elemento : ListaCambiosDeclaracion) {
+                    String lineaExportar = "Línea: " + elemento[0] + " | Ocurrió: " + elemento[1];
+                    out.println(lineaExportar);
+                }
+
+                // Opcional: Mostrar un mensaje de éxito al usuario
+                JOptionPane.showMessageDialog(this, 
+                    "El avance se ha exportado correctamente a:\n" + archivo.getAbsolutePath(), 
+                    "Exportación Exitosa", 
+                    JOptionPane.INFORMATION_MESSAGE);
+                
+                System.out.println("El avance se ha exportado en: " + archivo.getAbsolutePath());
+
+            } catch (IOException e) {
+                // Mostrar un mensaje de error al usuario
+                JOptionPane.showMessageDialog(this, 
+                    "Error al guardar el archivo:\n" + e.getMessage(), 
+                    "Error", 
+                    JOptionPane.ERROR_MESSAGE);
+                
+                System.err.println("Error al intentar exportar el archivo: " + e.getMessage());
+            }
+        }
+    }
 
     public static void main(String[] args) {
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) {}
