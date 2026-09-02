@@ -36,6 +36,8 @@ public class AnalizadorLexico extends JFrame {
     private ArrayList<Object[]> listaErrores = new ArrayList<>();
     private ArrayList<Object[]> listaErroresSintactico = new ArrayList<>();
     private ArrayList<Object[]> ListaCambiosDeclaracion = new ArrayList<>();
+    private ArrayList<Object[]> ListaCambiosAmbito = new ArrayList<>();
+    private Stack<Integer> pilaAmbito = new Stack<>();
     private boolean EsDeclaracion = true;
     private static String[][] matriz;
     private static String[][] matrizSintactica;
@@ -118,7 +120,7 @@ public class AnalizadorLexico extends JFrame {
         {",", "const decimal", "A5"},
         {"[", "const decimal", "A5", "]"},
         {",", "A4", "id", "A6", "A7"},
-        {"def", "id", "LISTA DE PARAMETROS", "PROGRAMA", ";", "A1"},
+        {"def", "id","802" ,"LISTA DE PARAMETROS", "PROGRAMA","803", ";", "A1"},
         {"id", "=", "DECLARACION CONSTANTES", "A8", ";", "A1"},
         {",", "id", "=", "DECLARACION CONSTANTES", "A8"}, 
         {"ε"},
@@ -762,16 +764,18 @@ public class AnalizadorLexico extends JFrame {
         JButton btnXLS = new JButton("Crear XLS");
         btnXLS.addActionListener(e -> crearXLS());
 
-        JButton btntxtAvance1 = new JButton("Crear txt Avance 1");
-        btntxtAvance1.addActionListener(e -> ExportarAvance1());
-
+        // JButton btntxtAvance1 = new JButton("Crear txt Avance 1");
+        // btntxtAvance1.addActionListener(e -> ExportarAvance1());
+        JButton btntxtAvance2 = new JButton("Crear txt Avance 2");
+        btntxtAvance2.addActionListener(e -> ExportarAvance2());
         fileNameLabel = new JLabel(" Sin archivo ");
         fileNameLabel.setForeground(TEXT_MAIN);
 
         bar.add(btnAbrir);
         bar.add(btnCompilar);
         bar.add(btnXLS);
-        bar.add(btntxtAvance1);
+        //bar.add(btntxtAvance1);
+        bar.add(btntxtAvance2);
         bar.add(fileNameLabel);
         
         return bar;
@@ -1153,6 +1157,11 @@ public class AnalizadorLexico extends JFrame {
         contadorNoTerminales.clear();
         listaErroresSintactico.clear();
         ListaCambiosDeclaracion.clear();
+        pilaAmbito.clear();
+        ListaCambiosAmbito.clear();
+        pilaAmbito.push(0);
+        int lineaFinal = 0;
+        int numAmbito = 1;
         if (!listaTokens.isEmpty() && listaTokens.get(listaTokens.size()-1)[1].equals("$")) {
             listaTokens.remove(listaTokens.size()-1);
         }
@@ -1182,7 +1191,7 @@ public class AnalizadorLexico extends JFrame {
                 Object[] nuevaLinea2 = {tokenActual[2], "Ejecucion = true" };
                 ListaCambiosDeclaracion.add(nuevaLinea);
                 ListaCambiosDeclaracion.add(nuevaLinea2);
-                System.out.println("entrando a ejecucion");
+                //System.out.println("entrando a ejecucion");
                 pilaSintactica.pop();
                 continue;
             }
@@ -1193,16 +1202,35 @@ public class AnalizadorLexico extends JFrame {
                 Object[] nuevaLinea = {tokenActual[2], "Declaracion = true" };
                 ListaCambiosDeclaracion.add(nuevaLinea2);
                 ListaCambiosDeclaracion.add(nuevaLinea);
-                System.out.println("Volviendo a declaracion");
+                //System.out.println("Volviendo a declaracion");
                 pilaSintactica.pop();
                 continue;
             }
 
+            if (tope.equals("802")){
+                pilaAmbito.push(numAmbito);
+                Object[] nuevaLinea = {tokenActual[2],numAmbito,"Creo"};
+                ListaCambiosAmbito.add(nuevaLinea);
+                numAmbito++;
+                pilaSintactica.pop();
+                continue;
+            }
+
+            if (tope.equals("803")){
+                int eliminado = pilaAmbito.pop();
+                Object[] nuevaLinea = {tokenActual[2],eliminado,"Exit"};
+                ListaCambiosAmbito.add(nuevaLinea);
+                pilaSintactica.pop();
+                continue;
+            }
+            if (i == listaTokens.size() - 2){
+                lineaFinal = Integer.valueOf( String.valueOf(tokenActual[2]));
+            }
 
             if (tope.equals(terminalActual)){
                 pilaSintactica.pop();
                 i++;
-                System.out.println("Match: " + terminalActual);
+                //System.out.println("Match: " + terminalActual);
             }
             else if (noTerminales.containsKey(tope)){
                 contadorNoTerminales.put(tope, contadorNoTerminales.getOrDefault(tope, 0) + 1);
@@ -1218,8 +1246,8 @@ public class AnalizadorLexico extends JFrame {
                 int indiceProduccion = Integer.parseInt(matrizSintactica[fila][columna]);
 
                 if (indiceProduccion >= 500) {
-                     System.err.println("Error Sintáctico en línea " + tokenActual[2] + 
-                                     ": No se esperaba '" + terminalActual + "'");
+                    //System.err.println("Error Sintáctico en línea " + tokenActual[2] + 
+                    //                 ": No se esperaba '" + terminalActual + "'");
                     //MANDAR ERROR A LISTA
                     Object[] datosError = {indiceProduccion,descripcionErrores.get(indiceProduccion),tokenActual[1],"Sintactico",tokenActual[2]};
                     listaErroresSintactico.add(datosError);
@@ -1232,7 +1260,7 @@ public class AnalizadorLexico extends JFrame {
                     continue;
                 }
                 if (indiceProduccion == 13){
-                    System.out.println("Aplicando producción epsilon " + indiceProduccion + " para " + tope);
+                    //System.out.println("Aplicando producción epsilon " + indiceProduccion + " para " + tope);
                     pilaSintactica.pop();
                     continue;
                 }
@@ -1257,6 +1285,11 @@ public class AnalizadorLexico extends JFrame {
                 break;
             }
         }
+        if (!pilaAmbito.isEmpty()){
+            int eliminado = pilaAmbito.pop();
+            Object[] nuevaLinea = {lineaFinal,eliminado,"Exit"};
+            ListaCambiosAmbito.add(nuevaLinea);
+        }
         if (pilaSintactica.isEmpty()) {
             System.out.println("¡Análisis sintáctico exitoso!");
         } else {
@@ -1264,9 +1297,9 @@ public class AnalizadorLexico extends JFrame {
         }
         actualizarListaErrores();
         imprimirEstadisticasNoTerminales();
-        for (Object[] elemento : ListaCambiosDeclaracion) {
-            System.out.println("linea: " + elemento[0] + " ocurrio : " + elemento[1]);
-        }
+        // for (Object[] elemento : ListaCambiosAmbito) {
+        //     System.out.println("linea: " + elemento[0] + " ambito: " + elemento[1] + " ocurrio = " + elemento[2]);
+        // }
      }
 
      private void imprimirEstadisticasNoTerminales() {
@@ -1498,6 +1531,58 @@ private void llenarDatosHoja(Sheet hoja, List<Object[]> datos) {
             }
         }
     }
+    private void ExportarAvance2() {
+    // Configuramos el JFileChooser
+    JFileChooser fc = new JFileChooser();
+    fc.setDialogTitle("Exportar Avance a TXT");
+    
+    // Filtro para que por defecto busque/guarde con extensión .txt
+    fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
+
+    // ASIGNAR NOMBRE POR DEFECTO AQUÍ
+    fc.setSelectedFile(new File("Ambito-BrandonFornes2.txt")); 
+
+    // Mostrar la ventana de diálogo para guardar. 
+    // 'this' asume que el método está dentro de un JFrame o JPanel.
+    if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+        File archivo = fc.getSelectedFile();
+        
+        // Asegurarnos de que el archivo termine con la extensión .txt
+        if (!archivo.getName().toLowerCase().endsWith(".txt")) {
+            archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
+        }
+
+        // Procedemos a escribir el archivo en la ruta seleccionada
+        try (FileWriter fw = new FileWriter(archivo);
+             BufferedWriter bw = new BufferedWriter(fw);
+             PrintWriter out = new PrintWriter(bw)) {
+
+            out.println("Linea: 1 | Ambito: 0 -> Creo");
+
+            for (Object[] elemento : ListaCambiosAmbito) {
+                String lineaExportar = "Línea: " + elemento[0] + " | Ambito: " + elemento[1] + " " + elemento[2];
+                out.println(lineaExportar);
+            }
+
+            // Opcional: Mostrar un mensaje de éxito al usuario
+            JOptionPane.showMessageDialog(this, 
+                "El avance se ha exportado correctamente a:\n" + archivo.getAbsolutePath(), 
+                "Exportación Exitosa", 
+                JOptionPane.INFORMATION_MESSAGE);
+            
+            System.out.println("El avance se ha exportado en: " + archivo.getAbsolutePath());
+
+        } catch (IOException e) {
+            // Mostrar un mensaje de error al usuario
+            JOptionPane.showMessageDialog(this, 
+                "Error al guardar el archivo:\n" + e.getMessage(), 
+                "Error", 
+                JOptionPane.ERROR_MESSAGE);
+            
+            System.err.println("Error al intentar exportar el archivo: " + e.getMessage());
+        }
+    }
+}
 
     public static void main(String[] args) {
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) {}
