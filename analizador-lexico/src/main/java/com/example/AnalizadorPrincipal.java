@@ -14,7 +14,7 @@ import java.io.*;
 import java.util.*;
 import java.util.List;
 
-public class AnalizadorLexico extends JFrame { 
+public class AnalizadorPrincipal extends JFrame { 
 
     // ─── Colores del tema (Simplificados) ───────────────────────────────────
     private static final Color BG_DARK       = new Color(18, 20, 28);
@@ -480,7 +480,7 @@ public class AnalizadorLexico extends JFrame {
     private boolean modificado          = false;
     private boolean updatingLineNumbers = false;
 
-    public AnalizadorLexico() {
+    public AnalizadorPrincipal() {
         super("Analizador Léxico");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1200, 700);
@@ -710,7 +710,7 @@ public class AnalizadorLexico extends JFrame {
         List<String[]> lineasFiltradas = new ArrayList<>();
         //System.out.println("El programa está buscando en: " + System.getProperty("user.dir"));
         try {
-            InputStream is = AnalizadorLexico.class.getClassLoader().getResourceAsStream(archivo);
+            InputStream is = AnalizadorPrincipal.class.getClassLoader().getResourceAsStream(archivo);
             //System.out.println(archivo);
             if (is == null) {
                 throw new FileNotFoundException("No se encontro la matriz");
@@ -766,8 +766,9 @@ public class AnalizadorLexico extends JFrame {
 
         // JButton btntxtAvance1 = new JButton("Crear txt Avance 1");
         // btntxtAvance1.addActionListener(e -> ExportarAvance1());
-        JButton btntxtAvance2 = new JButton("Crear txt Avance 2");
-        btntxtAvance2.addActionListener(e -> ExportarAvance2());
+        //JButton btntxtAvance2 = new JButton("Crear txt Avance 2");
+        //btntxtAvance2.addActionListener(e -> ExportarAvance2());
+
         fileNameLabel = new JLabel(" Sin archivo ");
         fileNameLabel.setForeground(TEXT_MAIN);
 
@@ -775,7 +776,7 @@ public class AnalizadorLexico extends JFrame {
         bar.add(btnCompilar);
         bar.add(btnXLS);
         //bar.add(btntxtAvance1);
-        bar.add(btntxtAvance2);
+        //bar.add(btntxtAvance2);
         bar.add(fileNameLabel);
         
         return bar;
@@ -1596,6 +1597,6 @@ private void llenarDatosHoja(Sheet hoja, List<Object[]> datos) {
         } catch (IOException e) {
             System.err.println("Error: No se encontró el archivo matriz.");
         }
-        SwingUtilities.invokeLater(AnalizadorLexico::new);
+        SwingUtilities.invokeLater(AnalizadorPrincipal::new);
     }
 }
