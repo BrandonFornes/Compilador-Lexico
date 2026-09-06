@@ -35,10 +35,16 @@ public class AnalizadorPrincipal extends JFrame {
     private ArrayList<Object[]> listaTokens = new ArrayList<>();
     private ArrayList<Object[]> listaErrores = new ArrayList<>();
     private ArrayList<Object[]> listaErroresSintactico = new ArrayList<>();
+    private ArrayList<Object[]> listaErroresSemantico = new ArrayList<>();
+    // Variables ambito
     private ArrayList<Object[]> ListaCambiosDeclaracion = new ArrayList<>();
     private ArrayList<Object[]> ListaCambiosAmbito = new ArrayList<>();
-    private Stack<Integer> pilaAmbito = new Stack<>();
+    private Stack<Integer> pilaContadorAmbito = new Stack<>();
+    private Deque<Map<String, Identificador>> pilaIdentificadores = new ArrayDeque<>();;
+    private List<Identificador> registroIdentificadores = new ArrayList<>();
     private boolean EsDeclaracion = true;
+
+
     private static String[][] matriz;
     private static String[][] matrizSintactica;
     private Map<String, Integer> contadorNoTerminales = new HashMap<>();
@@ -113,18 +119,18 @@ public class AnalizadorPrincipal extends JFrame {
         {},
         {"A1", "main", "(", ")","800", "{", "STATU", "A2","801", "}"},
         {";", "STATU", "A2"},
-        {"reg", "id", "{", "id", "A3", "}", "A1"},
+        {"reg","804", "id", "{", "id", "A3", "}","810", "A1"},
         {",", "id", "A3"},
-        {"var", "A4", "id", "A6", "A7", ";", "A1"},
+        {"var","804", "A4", "id", "A6", "A7", ";","810", "A1"},
         {"reg", "id"},
-        {",", "const decimal", "A5"},
-        {"[", "const decimal", "A5", "]"},
+        {",","807", "const decimal", "A5"},
+        {"[","807", "const decimal", "A5", "]"},
         {",", "A4", "id", "A6", "A7"},
-        {"def", "id","802" ,"LISTA DE PARAMETROS", "PROGRAMA","803", ";", "A1"},
-        {"id", "=", "DECLARACION CONSTANTES", "A8", ";", "A1"},
+        {"def","805", "id","802" ,"LISTA DE PARAMETROS", "PROGRAMA","803", ";","810", "A1"},
+        {"id","804", "=", "DECLARACION CONSTANTES", "A8", ";","810", "A1"},
         {",", "id", "=", "DECLARACION CONSTANTES", "A8"}, 
         {"ε"},
-        {"(", "id", "A3", ")"},
+        {"(","806", "id", "A3", ")","810"},
         {"CONSTANTE S/SIGNO"},
         {"+", "CONSTANTE S/SIGNO"},
         {"-", "CONSTANTE S/SIGNO"},
@@ -706,6 +712,32 @@ public class AnalizadorPrincipal extends JFrame {
         return lexema;
     }
 
+    public String getTipo(Object[] token){
+        int numToken = Integer.parseInt(token[0].toString());
+        switch (numToken) {
+            case -60:
+                return "Cadena";
+            case -61:
+                return "Bin";
+            case -62:
+                return "Dec";
+            case -63:
+                return "Oct";
+            case -64:
+                return "Hex";
+            case -65:
+                return "Real";
+            case -66:
+                return "exp";
+            case -67:
+                return "Boolean";
+        
+            default:
+                break;
+        }
+        return "";
+    }
+
     public static String[][] leerRangoCSV(String archivo, int fIni, int fFin, int cIni, int cFin) throws IOException {
         List<String[]> lineasFiltradas = new ArrayList<>();
         //System.out.println("El programa está buscando en: " + System.getProperty("user.dir"));
@@ -967,6 +999,9 @@ public class AnalizadorPrincipal extends JFrame {
         for (Object[] tokenErrorSintaxis : listaErroresSintactico) {
             errorTableModel.addRow(tokenErrorSintaxis);
         }
+        for (Object[] tokenErrorSemantico : listaErroresSemantico) {
+            errorTableModel.addRow(tokenErrorSemantico);
+        }
     }
 
 
@@ -1157,12 +1192,19 @@ public class AnalizadorPrincipal extends JFrame {
         pilaSintactica.clear();
         contadorNoTerminales.clear();
         listaErroresSintactico.clear();
+        listaErroresSemantico.clear();
+        //AMBITO
         ListaCambiosDeclaracion.clear();
-        pilaAmbito.clear();
+        pilaContadorAmbito.clear();
         ListaCambiosAmbito.clear();
-        pilaAmbito.push(0);
-        int lineaFinal = 0;
+        pilaContadorAmbito.push(0);
+        String claseActual = ""; // Puede ser "VAR", "FUNC", "PAR", o ""
         int numAmbito = 1;
+        Identificador funcionActual = null;
+        Identificador arregloActual = null;
+        pilaIdentificadores.clear();
+        pilaIdentificadores.push(new HashMap<>());
+
         if (!listaTokens.isEmpty() && listaTokens.get(listaTokens.size()-1)[1].equals("$")) {
             listaTokens.remove(listaTokens.size()-1);
         }
@@ -1188,51 +1230,137 @@ public class AnalizadorPrincipal extends JFrame {
 
             if (tope.equals("800")){
                 EsDeclaracion = false;
-                Object[] nuevaLinea = {tokenActual[2], "Declaracion = falso" };
-                Object[] nuevaLinea2 = {tokenActual[2], "Ejecucion = true" };
-                ListaCambiosDeclaracion.add(nuevaLinea);
-                ListaCambiosDeclaracion.add(nuevaLinea2);
-                //System.out.println("entrando a ejecucion");
                 pilaSintactica.pop();
                 continue;
             }
 
             if (tope.equals("801")){
                 EsDeclaracion = true;
-                Object[] nuevaLinea2 = {tokenActual[2], "Ejecucion = false" };
-                Object[] nuevaLinea = {tokenActual[2], "Declaracion = true" };
-                ListaCambiosDeclaracion.add(nuevaLinea2);
-                ListaCambiosDeclaracion.add(nuevaLinea);
-                //System.out.println("Volviendo a declaracion");
                 pilaSintactica.pop();
                 continue;
             }
 
             if (tope.equals("802")){
-                pilaAmbito.push(numAmbito);
-                Object[] nuevaLinea = {tokenActual[2],numAmbito,"Creo"};
-                ListaCambiosAmbito.add(nuevaLinea);
+                pilaIdentificadores.push(new HashMap<>());
+                pilaContadorAmbito.push(numAmbito);
                 numAmbito++;
                 pilaSintactica.pop();
                 continue;
             }
 
             if (tope.equals("803")){
-                int eliminado = pilaAmbito.pop();
-                Object[] nuevaLinea = {tokenActual[2],eliminado,"Exit"};
-                ListaCambiosAmbito.add(nuevaLinea);
+                if (!pilaIdentificadores.isEmpty()) {
+                pilaIdentificadores.pop();
+                }
+                pilaContadorAmbito.pop();
                 pilaSintactica.pop();
                 continue;
             }
-            if (i == listaTokens.size() - 2){
-                lineaFinal = Integer.valueOf( String.valueOf(tokenActual[2]));
+            if (tope.equals("804")){
+                claseActual = "VAR";
+                pilaSintactica.pop();
+                continue;
+            }
+            if (tope.equals("805")){
+                claseActual = "FUNC";
+                pilaSintactica.pop();
+                continue;
+            }
+            if (tope.equals("806")){
+                claseActual = "PAR";
+                pilaSintactica.pop();
+                continue;
+            }
+            
+            if (tope.equals("810")){
+                claseActual = ""; // Regresa a modo "Uso de variable" (no declaración)
+                arregloActual = null;   // ¡Seguridad añadida! Matamos la referencia al arreglo
+                funcionActual = null;   // También limpiamos la función por si acaso
+                pilaSintactica.pop();
+                continue;
+            }
+            
+            if (tope.equals("807")){
+                if (arregloActual != null) {
+                    // Si es la primera vez que entramos, inicializamos los valores
+                    if (arregloActual.dimensionArr == null) {
+                        arregloActual.dimensionArr = 0;
+                        arregloActual.tArr = 1; // Empezamos en 1 para poder multiplicar
+                    }
+                    
+                    // Sumamos 1 a la dimensión
+                    arregloActual.dimensionArr++;
+                    
+                    // Multiplicamos el tamaño total por el número que leímos (ej. 1 * 5 * 8 * 3 = 120)
+                    arregloActual.tArr = arregloActual.tArr * Integer.valueOf(String.valueOf(tokenActual[1]));
+            }
+            pilaSintactica.pop();
+            continue;
             }
 
             if (tope.equals(terminalActual)){
+
+                if (terminalActual.equals("id")){
+                    String lexemaActual = (String) tokenActual[1];
+                    int ambitoNum = pilaContadorAmbito.peek();
+                    //TODO COMPROBAR QUE SEA IGUAL CON ESDECLARACION
+                    if (!claseActual.isEmpty()){
+                        Map<String, Identificador> ambitoLocal = pilaIdentificadores.peek();
+                        
+                        if (ambitoLocal.containsKey(lexemaActual)){
+                            //TODO MANDAR A ERROR TIPO AMBITO
+                            String descripcion = "El identificador '" + lexemaActual + "' ya ha sido declarado en el ámbito " + ambitoNum; 
+                            Object[] datosError = {542, descripcion, tokenActual[1], "Semantico", tokenActual[2],ambitoNum};
+                            listaErroresSemantico.add(datosError);
+                            
+                        }
+                        else{
+                            String tipo = getTipo(tokenActual);
+                            Identificador nuevoId = new Identificador(lexemaActual, tipo, claseActual, ambitoNum);
+
+                            if (claseActual.equals("FUNC")){
+                                funcionActual = nuevoId;
+                                nuevoId.numeroPar = 0;
+                                nuevoId.tamañoPar = String.valueOf( ambitoNum + 1 );
+                            }
+                            if (claseActual.equals("PAR")){
+                                if (funcionActual != null){
+                                    funcionActual.numeroPar++;
+                                    nuevoId.numeroPar = funcionActual.numeroPar;
+                                    nuevoId.tamañoPar = funcionActual.id;
+                                }
+                            }
+                            if (claseActual.equals("VAR")){
+                                arregloActual = nuevoId;
+                                
+                            }
+                            ambitoLocal.put(lexemaActual, nuevoId);
+                            registroIdentificadores.add(nuevoId);
+                            //System.out.println(nuevoId);
+                        }
+                    }
+                    else{
+                        boolean existe = false;
+                        for (Map<String, Identificador> ambito : pilaIdentificadores) {
+                            if (ambito.containsKey(lexemaActual)) {
+                                existe = true;
+                                break;
+                            }
+                        }
+                        if (!existe) {
+                            //TODO MANDAR A ERROR
+                            String descripcion = "Error Semántico: '" + lexemaActual + "' no ha sido declarada. " + ambitoNum;
+                            Object[] datosError = {543, descripcion, tokenActual[1], "Semantico", tokenActual[2],ambitoNum};
+                            listaErroresSemantico.add(datosError);
+                        }
+                    }
+                }
+
                 pilaSintactica.pop();
                 i++;
                 //System.out.println("Match: " + terminalActual);
             }
+
             else if (noTerminales.containsKey(tope)){
                 contadorNoTerminales.put(tope, contadorNoTerminales.getOrDefault(tope, 0) + 1);
 
@@ -1286,10 +1414,8 @@ public class AnalizadorPrincipal extends JFrame {
                 break;
             }
         }
-        if (!pilaAmbito.isEmpty()){
-            int eliminado = pilaAmbito.pop();
-            Object[] nuevaLinea = {lineaFinal,eliminado,"Exit"};
-            ListaCambiosAmbito.add(nuevaLinea);
+        if (!pilaContadorAmbito.isEmpty()){
+            pilaContadorAmbito.pop();
         }
         if (pilaSintactica.isEmpty()) {
             System.out.println("¡Análisis sintáctico exitoso!");
@@ -1301,6 +1427,9 @@ public class AnalizadorPrincipal extends JFrame {
         // for (Object[] elemento : ListaCambiosAmbito) {
         //     System.out.println("linea: " + elemento[0] + " ambito: " + elemento[1] + " ocurrio = " + elemento[2]);
         // }
+        for (Identificador id : registroIdentificadores) {
+            System.out.println(id);
+        }   
      }
 
      private void imprimirEstadisticasNoTerminales() {
@@ -1359,6 +1488,9 @@ public class AnalizadorPrincipal extends JFrame {
             }
             if (listaErroresSintactico != null) {
                 erroresUnificados.addAll(listaErroresSintactico);
+            }
+            if (listaErroresSemantico != null) {
+                erroresUnificados.addAll(listaErroresSemantico);
             }
             // Mandamos la lista unificada a la hoja
             llenarDatosHoja(hojaErrores, erroresUnificados);
@@ -1444,6 +1576,135 @@ public class AnalizadorPrincipal extends JFrame {
                 celda.setCellValue(categorias[i]);
                 celda.setCellStyle(estiloConteos);
             }
+            // =========================================================================
+            // 5. NUEVA HOJA: ÁMBITO (Contador por cada tipo de ID y Totales)
+            // =========================================================================
+            Sheet hojaAmbito = workbook.createSheet("Ámbito");
+            // Se eliminó "Char", por lo que "Errores" es índice 9 y "total" es 10
+            String[] cabeceraAmbito = {"Ambito", "Bin", "Dec", "Oct", "Hex", "Real", "exp", "Cadena", "Boolean", "Errores", "total"};
+            crearFilaCabecera(hojaAmbito, cabeceraAmbito, estiloCabecera);
+
+            // a) Determinar el ámbito máximo (para saber cuántas filas crear)
+            int maxAmbito = 0;
+            for (Identificador id : registroIdentificadores) {
+                if (id.ambito > maxAmbito) maxAmbito = id.ambito;
+            }
+            if (listaErroresSemantico != null) {
+                for(Object[] err : listaErroresSemantico) {
+                    // Validamos si guardaste el ámbito en la posición 5
+                    if (err.length > 5 && err[5] instanceof Integer) {
+                        int ambError = (Integer) err[5];
+                        if (ambError > maxAmbito) maxAmbito = ambError;
+                    }
+                }
+            }
+
+            // b) Matrices para contar (Filas = Ambitos, Columnas = Tipos)
+            // Se eliminó "Char" del arreglo de validación
+            String[] tiposColumna = {"Bin", "Dec", "Oct", "Hex", "Real", "exp", "Cadena", "Boolean"};
+            int[][] matrizTipos = new int[maxAmbito + 1][tiposColumna.length];
+            int[] matrizErrores = new int[maxAmbito + 1];
+
+            // Rellenar matrices
+            for (Identificador id : registroIdentificadores) {
+                for (int j = 0; j < tiposColumna.length; j++) {
+                    if (tiposColumna[j].equalsIgnoreCase(id.tipo)) {
+                        matrizTipos[id.ambito][j]++;
+                        break;
+                    }
+                }
+            }
+            if (listaErroresSemantico != null) {
+                for(Object[] err : listaErroresSemantico) {
+                    if (err.length > 5 && err[5] instanceof Integer) {
+                        matrizErrores[(Integer) err[5]]++;
+                    }
+                }
+            }
+
+            // c) Imprimir datos en la hoja y calcular totales
+            int[] totalesTipos = new int[tiposColumna.length];
+            int totalErrores = 0;
+            int granTotal = 0;
+
+            for (int i = 0; i <= maxAmbito; i++) {
+                Row fila = hojaAmbito.createRow(i + 1);
+                fila.createCell(0).setCellValue(i); // Nivel de Ámbito
+                
+                int totalFila = 0;
+                // Escribir los tipos (ahora son 8) y sumarlos a los totales de columna
+                for (int j = 0; j < tiposColumna.length; j++) {
+                    fila.createCell(j + 1).setCellValue(matrizTipos[i][j]);
+                    
+                    totalFila += matrizTipos[i][j];
+                    totalesTipos[j] += matrizTipos[i][j]; // Suma acumulada de esta columna
+                }
+                
+                // Escribir Errores (Índice 9) y sumarlos
+                fila.createCell(9).setCellValue(matrizErrores[i]);
+                totalFila += matrizErrores[i];
+                totalErrores += matrizErrores[i];
+                
+                // Escribir Total por fila (Índice 10)
+                fila.createCell(10).setCellValue(totalFila);
+                granTotal += totalFila;
+            }
+
+            // d) Fila extra para los TOTALES FINALES
+            Row filaTotal = hojaAmbito.createRow(maxAmbito + 2);
+            filaTotal.createCell(0).setCellValue("total"); // Etiqueta
+            
+            // Imprimir los totales de cada columna de tipo
+            for (int j = 0; j < tiposColumna.length; j++) {
+                filaTotal.createCell(j + 1).setCellValue(totalesTipos[j]);
+            }
+            
+            // Imprimir total general de errores (Índice 9) y el gran total final (Índice 10)
+            filaTotal.createCell(9).setCellValue(totalErrores);
+            filaTotal.createCell(10).setCellValue(granTotal);
+            
+            // Ponerle negritas a la fila de totales para que resalte
+            for (int k = 0; k <= 10; k++) {
+                Cell celda = filaTotal.getCell(k);
+                if (celda != null) {
+                    celda.setCellStyle(estiloCabecera);
+                }
+            }
+            
+            // Auto-ajustar columnas
+            for (int i = 0; i < cabeceraAmbito.length; i++) {
+                hojaAmbito.autoSizeColumn(i);
+            }
+            // =========================================================================
+
+
+            // =========================================================================
+            // 6. NUEVA HOJA: TABLA DE SÍMBOLOS
+            // =========================================================================
+            Sheet hojaSimbolos = workbook.createSheet("Tabla de Simbolos");
+            String[] cabeceraSimbolos = {"id", "tipo", "Clase", "amb", "Tarr", "DimArr", "NoPar", "TParr"};
+            crearFilaCabecera(hojaSimbolos, cabeceraSimbolos, estiloCabecera);
+
+            int filaIndex = 1;
+            for (Identificador id : registroIdentificadores) {
+                Row fila = hojaSimbolos.createRow(filaIndex++);
+                
+                // Aplicamos la regla: Si es null, imprimimos "-", si no, imprimimos su valor
+                fila.createCell(0).setCellValue(id.id != null ? id.id : "-");
+                fila.createCell(1).setCellValue(id.tipo != null ? id.tipo : "-");
+                fila.createCell(2).setCellValue(id.clase != null ? id.clase : "-");
+                fila.createCell(3).setCellValue(id.ambito); // Es primitivo (int), nunca es null
+
+                fila.createCell(4).setCellValue(id.tArr != null ? id.tArr.toString() : "-");
+                fila.createCell(5).setCellValue(id.dimensionArr != null ? id.dimensionArr.toString() : "-");
+                fila.createCell(6).setCellValue(id.numeroPar != null ? id.numeroPar.toString() : "-");
+                
+                // Usamos toString() para el tamañoPar por si está guardando Integers o Strings (nombres de función)
+                fila.createCell(7).setCellValue(id.tamañoPar != null ? id.tamañoPar.toString() : "-");
+            }
+
+            for (int i = 0; i < cabeceraSimbolos.length; i++) hojaSimbolos.autoSizeColumn(i);
+            // =========================================================================
 
             try (FileOutputStream out = new FileOutputStream(archivo)) {
                 workbook.write(out);
@@ -1483,107 +1744,107 @@ private void llenarDatosHoja(Sheet hoja, List<Object[]> datos) {
     }
 }
     //Ambito
-    private void ExportarAvance1() {
-        // Configuramos el JFileChooser
-        JFileChooser fc = new JFileChooser();
-        fc.setDialogTitle("Exportar Avance a TXT");
+//     private void ExportarAvance1() {
+//         // Configuramos el JFileChooser
+//         JFileChooser fc = new JFileChooser();
+//         fc.setDialogTitle("Exportar Avance a TXT");
         
-        // Filtro para que por defecto busque/guarde con extensión .txt
-        fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
+//         // Filtro para que por defecto busque/guarde con extensión .txt
+//         fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
 
-        // Mostrar la ventana de diálogo para guardar. 
-        // 'this' asume que el método está dentro de un JFrame o JPanel.
-        if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File archivo = fc.getSelectedFile();
+//         // Mostrar la ventana de diálogo para guardar. 
+//         // 'this' asume que el método está dentro de un JFrame o JPanel.
+//         if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+//             File archivo = fc.getSelectedFile();
             
-            // Asegurarnos de que el archivo termine con la extensión .txt
-            if (!archivo.getName().toLowerCase().endsWith(".txt")) {
-                archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
-            }
+//             // Asegurarnos de que el archivo termine con la extensión .txt
+//             if (!archivo.getName().toLowerCase().endsWith(".txt")) {
+//                 archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
+//             }
 
-            // Procedemos a escribir el archivo en la ruta seleccionada
-            try (FileWriter fw = new FileWriter(archivo);
-                 BufferedWriter bw = new BufferedWriter(fw);
-                 PrintWriter out = new PrintWriter(bw)) {
+//             // Procedemos a escribir el archivo en la ruta seleccionada
+//             try (FileWriter fw = new FileWriter(archivo);
+//                  BufferedWriter bw = new BufferedWriter(fw);
+//                  PrintWriter out = new PrintWriter(bw)) {
 
-                out.println("Linea: 1 | Ocurrió: Declaracion = true ");
+//                 out.println("Linea: 1 | Ocurrió: Declaracion = true ");
 
-                for (Object[] elemento : ListaCambiosDeclaracion) {
-                    String lineaExportar = "Línea: " + elemento[0] + " | Ocurrió: " + elemento[1];
-                    out.println(lineaExportar);
-                }
+//                 for (Object[] elemento : ListaCambiosDeclaracion) {
+//                     String lineaExportar = "Línea: " + elemento[0] + " | Ocurrió: " + elemento[1];
+//                     out.println(lineaExportar);
+//                 }
 
-                // Opcional: Mostrar un mensaje de éxito al usuario
-                JOptionPane.showMessageDialog(this, 
-                    "El avance se ha exportado correctamente a:\n" + archivo.getAbsolutePath(), 
-                    "Exportación Exitosa", 
-                    JOptionPane.INFORMATION_MESSAGE);
+//                 // Opcional: Mostrar un mensaje de éxito al usuario
+//                 JOptionPane.showMessageDialog(this, 
+//                     "El avance se ha exportado correctamente a:\n" + archivo.getAbsolutePath(), 
+//                     "Exportación Exitosa", 
+//                     JOptionPane.INFORMATION_MESSAGE);
                 
-                System.out.println("El avance se ha exportado en: " + archivo.getAbsolutePath());
+//                 System.out.println("El avance se ha exportado en: " + archivo.getAbsolutePath());
 
-            } catch (IOException e) {
-                // Mostrar un mensaje de error al usuario
-                JOptionPane.showMessageDialog(this, 
-                    "Error al guardar el archivo:\n" + e.getMessage(), 
-                    "Error", 
-                    JOptionPane.ERROR_MESSAGE);
+//             } catch (IOException e) {
+//                 // Mostrar un mensaje de error al usuario
+//                 JOptionPane.showMessageDialog(this, 
+//                     "Error al guardar el archivo:\n" + e.getMessage(), 
+//                     "Error", 
+//                     JOptionPane.ERROR_MESSAGE);
                 
-                System.err.println("Error al intentar exportar el archivo: " + e.getMessage());
-            }
-        }
-    }
-    private void ExportarAvance2() {
-    // Configuramos el JFileChooser
-    JFileChooser fc = new JFileChooser();
-    fc.setDialogTitle("Exportar Avance a TXT");
+//                 System.err.println("Error al intentar exportar el archivo: " + e.getMessage());
+//             }
+//         }
+//     }
+//     private void ExportarAvance2() {
+//     // Configuramos el JFileChooser
+//     JFileChooser fc = new JFileChooser();
+//     fc.setDialogTitle("Exportar Avance a TXT");
     
-    // Filtro para que por defecto busque/guarde con extensión .txt
-    fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
+//     // Filtro para que por defecto busque/guarde con extensión .txt
+//     fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
 
-    // ASIGNAR NOMBRE POR DEFECTO AQUÍ
-    fc.setSelectedFile(new File("Ambito-BrandonFornes2.txt")); 
+//     // ASIGNAR NOMBRE POR DEFECTO AQUÍ
+//     fc.setSelectedFile(new File("Ambito-BrandonFornes2.txt")); 
 
-    // Mostrar la ventana de diálogo para guardar. 
-    // 'this' asume que el método está dentro de un JFrame o JPanel.
-    if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-        File archivo = fc.getSelectedFile();
+//     // Mostrar la ventana de diálogo para guardar. 
+//     // 'this' asume que el método está dentro de un JFrame o JPanel.
+//     if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+//         File archivo = fc.getSelectedFile();
         
-        // Asegurarnos de que el archivo termine con la extensión .txt
-        if (!archivo.getName().toLowerCase().endsWith(".txt")) {
-            archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
-        }
+//         // Asegurarnos de que el archivo termine con la extensión .txt
+//         if (!archivo.getName().toLowerCase().endsWith(".txt")) {
+//             archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
+//         }
 
-        // Procedemos a escribir el archivo en la ruta seleccionada
-        try (FileWriter fw = new FileWriter(archivo);
-             BufferedWriter bw = new BufferedWriter(fw);
-             PrintWriter out = new PrintWriter(bw)) {
+//         // Procedemos a escribir el archivo en la ruta seleccionada
+//         try (FileWriter fw = new FileWriter(archivo);
+//              BufferedWriter bw = new BufferedWriter(fw);
+//              PrintWriter out = new PrintWriter(bw)) {
 
-            out.println("Linea: 1 | Ambito: 0 -> Creo");
+//             out.println("Linea: 1 | Ambito: 0 -> Creo");
 
-            for (Object[] elemento : ListaCambiosAmbito) {
-                String lineaExportar = "Línea: " + elemento[0] + " | Ambito: " + elemento[1] + " " + elemento[2];
-                out.println(lineaExportar);
-            }
+//             for (Object[] elemento : ListaCambiosAmbito) {
+//                 String lineaExportar = "Línea: " + elemento[0] + " | Ambito: " + elemento[1] + " " + elemento[2];
+//                 out.println(lineaExportar);
+//             }
 
-            // Opcional: Mostrar un mensaje de éxito al usuario
-            JOptionPane.showMessageDialog(this, 
-                "El avance se ha exportado correctamente a:\n" + archivo.getAbsolutePath(), 
-                "Exportación Exitosa", 
-                JOptionPane.INFORMATION_MESSAGE);
+//             // Opcional: Mostrar un mensaje de éxito al usuario
+//             JOptionPane.showMessageDialog(this, 
+//                 "El avance se ha exportado correctamente a:\n" + archivo.getAbsolutePath(), 
+//                 "Exportación Exitosa", 
+//                 JOptionPane.INFORMATION_MESSAGE);
             
-            System.out.println("El avance se ha exportado en: " + archivo.getAbsolutePath());
+//             System.out.println("El avance se ha exportado en: " + archivo.getAbsolutePath());
 
-        } catch (IOException e) {
-            // Mostrar un mensaje de error al usuario
-            JOptionPane.showMessageDialog(this, 
-                "Error al guardar el archivo:\n" + e.getMessage(), 
-                "Error", 
-                JOptionPane.ERROR_MESSAGE);
+//         } catch (IOException e) {
+//             // Mostrar un mensaje de error al usuario
+//             JOptionPane.showMessageDialog(this, 
+//                 "Error al guardar el archivo:\n" + e.getMessage(), 
+//                 "Error", 
+//                 JOptionPane.ERROR_MESSAGE);
             
-            System.err.println("Error al intentar exportar el archivo: " + e.getMessage());
-        }
-    }
-}
+//             System.err.println("Error al intentar exportar el archivo: " + e.getMessage());
+//         }
+//     }
+// }
 
     public static void main(String[] args) {
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) {}

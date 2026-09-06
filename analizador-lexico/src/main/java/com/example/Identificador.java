@@ -9,7 +9,7 @@ public class Identificador {
     public Integer  tArr;
     public Integer  dimensionArr;
     public Integer  numeroPar;
-    public Integer  tamañoPar;
+    public String  tamañoPar;
 
     public Identificador(String id, String tipo, String clase, int ambito) {
         this.id = id;
@@ -18,5 +18,17 @@ public class Identificador {
         this.ambito = ambito;
     }
 
-    
+    @Override
+    public String toString() {
+        return "Identificador {" +
+                "id='" + id + '\'' +
+                ", tipo='" + tipo + '\'' +
+                ", clase='" + clase + '\'' +
+                ", ambito=" + ambito +
+                ", tArr=" + tArr +
+                ", dimensionArr=" + dimensionArr +
+                ", numeroPar=" + numeroPar +
+                ", tamañoPar=" + tamañoPar +
+                '}';
+    }
 }
