@@ -6,7 +6,7 @@ public class Identificador {
     public String clase;
     public int ambito;
     
-    public Integer  tArr;
+    public String  tArr;
     public Integer  dimensionArr;
     public Integer  numeroPar;
     public String  tamañoPar;

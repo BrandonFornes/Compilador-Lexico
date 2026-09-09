@@ -127,7 +127,7 @@ public class AnalizadorPrincipal extends JFrame {
         {"[","807", "const decimal", "A5", "]"},
         {",", "A4", "id", "A6", "A7"},
         {"def","805", "id","802" ,"LISTA DE PARAMETROS", "PROGRAMA","803", ";","810", "A1"},
-        {"id","804", "=", "DECLARACION CONSTANTES", "A8", ";","810", "A1"},
+        {"808","id", "=", "DECLARACION CONSTANTES", "A8", ";","810", "A1"},
         {",", "id", "=", "DECLARACION CONSTANTES", "A8"}, 
         {"ε"},
         {"(","806", "id", "A3", ")","810"},
@@ -1204,6 +1204,7 @@ public class AnalizadorPrincipal extends JFrame {
         Identificador arregloActual = null;
         pilaIdentificadores.clear();
         pilaIdentificadores.push(new HashMap<>());
+        registroIdentificadores.clear();
 
         if (!listaTokens.isEmpty() && listaTokens.get(listaTokens.size()-1)[1].equals("$")) {
             listaTokens.remove(listaTokens.size()-1);
@@ -1271,6 +1272,11 @@ public class AnalizadorPrincipal extends JFrame {
                 pilaSintactica.pop();
                 continue;
             }
+            if (tope.equals("808")){
+                claseActual = "CONST";
+                pilaSintactica.pop();
+                continue;
+            }
             
             if (tope.equals("810")){
                 claseActual = ""; // Regresa a modo "Uso de variable" (no declaración)
@@ -1285,14 +1291,23 @@ public class AnalizadorPrincipal extends JFrame {
                     // Si es la primera vez que entramos, inicializamos los valores
                     if (arregloActual.dimensionArr == null) {
                         arregloActual.dimensionArr = 0;
-                        arregloActual.tArr = 1; // Empezamos en 1 para poder multiplicar
+                        arregloActual.tArr = ""; // Empezamos con un texto vacío
+                        arregloActual.clase = "ARR";
                     }
                     
                     // Sumamos 1 a la dimensión
                     arregloActual.dimensionArr++;
                     
-                    // Multiplicamos el tamaño total por el número que leímos (ej. 1 * 5 * 8 * 3 = 120)
-                    arregloActual.tArr = arregloActual.tArr * Integer.valueOf(String.valueOf(tokenActual[1]));
+                    String numeroLeido = String.valueOf(tokenActual[1]);
+        
+                    // Si el texto está vacío (es el primer número), solo lo asignamos
+                    if (arregloActual.tArr.isEmpty()) {
+                        arregloActual.tArr = numeroLeido;
+                    } 
+                    // Si ya tiene números, le agregamos una coma y el nuevo número
+                    else {
+                        arregloActual.tArr = arregloActual.tArr + "," + numeroLeido;
+                    }
             }
             pilaSintactica.pop();
             continue;
@@ -1310,7 +1325,7 @@ public class AnalizadorPrincipal extends JFrame {
                         if (ambitoLocal.containsKey(lexemaActual)){
                             //TODO MANDAR A ERROR TIPO AMBITO
                             String descripcion = "El identificador '" + lexemaActual + "' ya ha sido declarado en el ámbito " + ambitoNum; 
-                            Object[] datosError = {542, descripcion, tokenActual[1], "Semantico", tokenActual[2],ambitoNum};
+                            Object[] datosError = {542, descripcion, tokenActual[1], "Ambito", tokenActual[2],ambitoNum};
                             listaErroresSemantico.add(datosError);
                             
                         }
@@ -1321,7 +1336,8 @@ public class AnalizadorPrincipal extends JFrame {
                             if (claseActual.equals("FUNC")){
                                 funcionActual = nuevoId;
                                 nuevoId.numeroPar = 0;
-                                nuevoId.tamañoPar = String.valueOf( ambitoNum + 1 );
+
+                                nuevoId.tamañoPar = String.valueOf(numAmbito);
                             }
                             if (claseActual.equals("PAR")){
                                 if (funcionActual != null){
@@ -1350,7 +1366,7 @@ public class AnalizadorPrincipal extends JFrame {
                         if (!existe) {
                             //TODO MANDAR A ERROR
                             String descripcion = "Error Semántico: '" + lexemaActual + "' no ha sido declarada. " + ambitoNum;
-                            Object[] datosError = {543, descripcion, tokenActual[1], "Semantico", tokenActual[2],ambitoNum};
+                            Object[] datosError = {543, descripcion, tokenActual[1], "Ambito", tokenActual[2],ambitoNum};
                             listaErroresSemantico.add(datosError);
                         }
                     }
@@ -1457,7 +1473,7 @@ public class AnalizadorPrincipal extends JFrame {
         JFileChooser fc = new JFileChooser();
         fc.setDialogTitle("Exportar Resultados a Excel");
         fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivo de Excel (*.xlsx)", "xlsx"));
-
+        fc.setSelectedFile(new File("Ambito-BrandonFornesRubio-1.xlsx"));
         if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
                 File archivo = fc.getSelectedFile();
                 if (!archivo.getName().toLowerCase().endsWith(".xlsx")) {
