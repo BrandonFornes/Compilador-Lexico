@@ -44,6 +44,14 @@ public class AnalizadorPrincipal extends JFrame {
     private List<Identificador> registroIdentificadores = new ArrayList<>();
     private boolean EsDeclaracion = true;
 
+    //Variables SEMANTICA
+    boolean leyendoOperacion = false;
+    List<Object[]> expresionActual = new ArrayList<>();
+    int lineaOperacionActual = 0;
+    public List<String> registroOperaciones = new ArrayList<>();
+
+    Object[] tokenIzquierdo = null;
+    Object[] tokenAsignacion = null;
 
     private static String[][] matriz;
     private static String[][] matrizSintactica;
@@ -119,7 +127,7 @@ public class AnalizadorPrincipal extends JFrame {
         {},
         {"A1", "main", "(", ")","800", "{", "STATU", "A2","801", "}"},
         {";", "STATU", "A2"},
-        {"reg","804", "id", "{", "id", "A3", "}","810", "A1"},
+        {"reg","804", "id", "{","802", "id", "A3", "}","803","810", "A1"},
         {",", "id", "A3"},
         {"var","804", "A4", "id", "A6", "A7", ";","810", "A1"},
         {"reg", "id"},
@@ -156,7 +164,7 @@ public class AnalizadorPrincipal extends JFrame {
         {"while", "(", "OR", ")", "STATU"},
         {"do", "STATU", "while", "(", "OR", ")"},
         {"return", "OR"},
-        {"for", "(", "OR", "B3", ")", "STATU"},
+        {"for", "(","802", "OR", "B3", ")", "STATU","803"},
         {",", "OR", "B3"},
         {":", "OR"},
         {";", "STATU", ";", "OR", "B1"},
@@ -195,7 +203,7 @@ public class AnalizadorPrincipal extends JFrame {
         {"DECLARACION CONSTANTES"}, // Índice 76: DECLARACION CONSTANTES
         {"id", "I1"}, // Índice 77: id I1
         {"ARR", "I2"}, // Índice 78: ARR I2
-        {"ASIG", "OR", "I3"}, // Índice 79: ASIG OR I3
+        {"ASIG","811", "OR","812", "I3"}, // Índice 79: ASIG OR I3
         {"(", "I4", ")"}, // Índice 80: ( I4 )
         {"ASIG", "OR", "I3"}, // Índice 81: ASIG OR I3
         {"?", "OR", ":", "OR"}, // Índice 82: ? OR : OR
@@ -694,7 +702,7 @@ public class AnalizadorPrincipal extends JFrame {
     public String getTipoToken(Object[] token){
         int idToken = (int) token[0];
         String lexema = (String) token[1];
-        
+        //System.out.println("lexema es 1 " + lexema + " y token " + idToken);
 
         if (idToken == -53) return "const cadena";
         if (idToken == -54) return "binario";
@@ -707,6 +715,7 @@ public class AnalizadorPrincipal extends JFrame {
             return "id";
         }
         if (idToken == -142){
+            //System.out.println("lexema es " + lexema);
             return "id";
         }
         return lexema;
@@ -801,6 +810,9 @@ public class AnalizadorPrincipal extends JFrame {
         //JButton btntxtAvance2 = new JButton("Crear txt Avance 2");
         //btntxtAvance2.addActionListener(e -> ExportarAvance2());
 
+        JButton btntxtAvance1Semantica = new JButton("Crear txt Avance 1 Semantica");
+        btntxtAvance1Semantica.addActionListener(e -> ExportarOperacionesTXT());
+
         fileNameLabel = new JLabel(" Sin archivo ");
         fileNameLabel.setForeground(TEXT_MAIN);
 
@@ -809,6 +821,7 @@ public class AnalizadorPrincipal extends JFrame {
         bar.add(btnXLS);
         //bar.add(btntxtAvance1);
         //bar.add(btntxtAvance2);
+        bar.add(btntxtAvance1Semantica);
         bar.add(fileNameLabel);
         
         return bar;
@@ -1205,7 +1218,7 @@ public class AnalizadorPrincipal extends JFrame {
         pilaIdentificadores.clear();
         pilaIdentificadores.push(new HashMap<>());
         registroIdentificadores.clear();
-
+        registroOperaciones.clear();
         if (!listaTokens.isEmpty() && listaTokens.get(listaTokens.size()-1)[1].equals("$")) {
             listaTokens.remove(listaTokens.size()-1);
         }
@@ -1308,16 +1321,87 @@ public class AnalizadorPrincipal extends JFrame {
                     else {
                         arregloActual.tArr = arregloActual.tArr + "," + numeroLeido;
                     }
+                }
+                pilaSintactica.pop();
+                continue;
             }
-            pilaSintactica.pop();
-            continue;
+
+            if (tope.equals("811")){
+                leyendoOperacion = true;
+                expresionActual.clear();
+                lineaOperacionActual = (int) tokenActual[2]; // Asumiendo que [2] es la línea
+                pilaSintactica.pop();
+                continue;
+            }
+            if (tope.equals("812")) {
+                leyendoOperacion = false;
+                
+                // Convertimos a prefijo el lado derecho
+                List<Object[]> prefijaDer = convertirAPrefijo(expresionActual);
+                
+                // Creamos las listas completas (Izquierda + Derecha)
+                List<Object[]> infijaCompleta = new ArrayList<>();
+                List<Object[]> prefijaCompleta = new ArrayList<>();
+                
+                // Si la operación provino de una asignación (ej. x = 5), agregamos el lado izquierdo
+                if (tokenIzquierdo != null && tokenAsignacion != null) {
+                    // Armar Infija completa: [id] [=] [a] [+] [b]
+                    infijaCompleta.add(tokenIzquierdo);
+                    infijaCompleta.add(tokenAsignacion);
+                    infijaCompleta.addAll(expresionActual);
+                    
+                    // Armar Prefija completa: [=] [id] [+] [a] [b]
+                    prefijaCompleta.add(tokenAsignacion);
+                    prefijaCompleta.add(tokenIzquierdo);
+                    prefijaCompleta.addAll(prefijaDer);
+                    
+                    // Limpiamos temporales
+                    tokenIzquierdo = null;
+                    tokenAsignacion = null;
+                } else {
+                    // Era una condicional de un IF o WHILE (No hay lado izquierdo)
+                    infijaCompleta.addAll(expresionActual);
+                    prefijaCompleta.addAll(prefijaDer);
+                }
+
+                StringBuilder textoInfijo = new StringBuilder();
+                for (Object[] token : infijaCompleta) {
+                    textoInfijo.append(token[1]).append(" "); // token[1] es el lexema ("x", "+", etc.)
+                }
+
+                // 2. Extraer los lexemas de la lista prefija
+                StringBuilder textoPrefijo = new StringBuilder();
+                for (Object[] token : prefijaCompleta) {
+                    textoPrefijo.append(token[1]).append(" ");
+                }
+
+                // 3. Ahora sí, lo guardas o lo imprimes de forma legible
+                String resultadoParaConsola = "linea: " + lineaOperacionActual + 
+                                            " | prefijo : " + textoPrefijo.toString();
+
+                registroOperaciones.add(resultadoParaConsola);
+                //System.out.println(resultadoParaConsola);
+                pilaSintactica.pop();
+                continue;
             }
 
             if (tope.equals(terminalActual)){
 
+                if (leyendoOperacion) {
+                    expresionActual.add(tokenActual);
+                } else {
+                    if (terminalActual.equals("id")) {
+                        tokenIzquierdo = tokenActual;
+                    } else if (terminalActual.equals("=") || terminalActual.equals("+=") || 
+                            terminalActual.equals("-=") || terminalActual.equals("*=") || terminalActual.equals("/=")) {
+                        tokenAsignacion = tokenActual;
+                    }
+                }
+
                 if (terminalActual.equals("id")){
                     String lexemaActual = (String) tokenActual[1];
                     int ambitoNum = pilaContadorAmbito.peek();
+                    
                     //TODO COMPROBAR QUE SEA IGUAL CON ESDECLARACION
                     if (!claseActual.isEmpty()){
                         Map<String, Identificador> ambitoLocal = pilaIdentificadores.peek();
@@ -1443,10 +1527,81 @@ public class AnalizadorPrincipal extends JFrame {
         // for (Object[] elemento : ListaCambiosAmbito) {
         //     System.out.println("linea: " + elemento[0] + " ambito: " + elemento[1] + " ocurrio = " + elemento[2]);
         // }
-        for (Identificador id : registroIdentificadores) {
-            System.out.println(id);
-        }   
+        // for (Identificador id : registroIdentificadores) {
+        //     System.out.println(id);
+        // }   
      }
+
+        private int obtenerPrecedencia(String op) {
+        switch (op) {
+            case "||": return 1;
+            case "&&": return 2;
+            case "==": case "!=": return 3;
+            case "<": case "<=": case ">": case ">=": return 4;
+            case "+": case "-": return 5;
+            case "*": case "/": case "%": return 6;
+            case "^": return 7;
+        }
+        return -1;
+    }
+
+    public List<Object[]> convertirAPrefijo(List<Object[]> infija) {
+        List<Object[]> invertida = new ArrayList<>();
+        
+        // 1. Invertir la infija y voltear los paréntesis lógicamente
+        for (int i = infija.size() - 1; i >= 0; i--) {
+            Object[] tokenOriginal = infija.get(i);
+            String lexema = (String) tokenOriginal[1];
+            
+            if (lexema.equals("(")) {
+                Object[] tokenMod = tokenOriginal.clone(); // Clonamos para no dañar el original
+                tokenMod[1] = ")";
+                invertida.add(tokenMod);
+            } else if (lexema.equals(")")) {
+                Object[] tokenMod = tokenOriginal.clone();
+                tokenMod[1] = "(";
+                invertida.add(tokenMod);
+            } else {
+                invertida.add(tokenOriginal);
+            }
+        }
+
+        Stack<Object[]> pilaOperadores = new Stack<>();
+        List<Object[]> prefijaInvertida = new ArrayList<>();
+
+        // 2. Procesar con la Pila
+        for (Object[] token : invertida) {
+            String lexema = (String) token[1];
+
+            if (lexema.equals("(")) {
+                pilaOperadores.push(token);
+            } else if (lexema.equals(")")) {
+                while (!pilaOperadores.isEmpty() && !((String) pilaOperadores.peek()[1]).equals("(")) {
+                    prefijaInvertida.add(pilaOperadores.pop());
+                }
+                if (!pilaOperadores.isEmpty()) pilaOperadores.pop(); // Sacar '('
+            } else if (obtenerPrecedencia(lexema) != -1) {
+                // Es operador
+                while (!pilaOperadores.isEmpty() && 
+                    obtenerPrecedencia((String) pilaOperadores.peek()[1]) > obtenerPrecedencia(lexema)) {
+                    prefijaInvertida.add(pilaOperadores.pop());
+                }
+                pilaOperadores.push(token);
+            } else {
+                // Es operando (id, const)
+                prefijaInvertida.add(token);
+            }
+        }
+
+        while (!pilaOperadores.isEmpty()) {
+            prefijaInvertida.add(pilaOperadores.pop());
+        }
+
+        // 3. Invertir el resultado final
+        Collections.reverse(prefijaInvertida);
+        return prefijaInvertida;
+    }
+    
 
      private void imprimirEstadisticasNoTerminales() {
         //System.out.println("\n--- ESTADÍSTICAS DE NO TERMINALES ---");
@@ -1861,6 +2016,56 @@ private void llenarDatosHoja(Sheet hoja, List<Object[]> datos) {
 //         }
 //     }
 // }
+    private void ExportarOperacionesTXT() {
+    // Configuramos el JFileChooser
+    JFileChooser fc = new JFileChooser();
+    fc.setDialogTitle("Exportar Operaciones Infijas y Prefijas a TXT");
+    
+    // Filtro para que por defecto busque/guarde con extensión .txt
+    fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
+    fc.setSelectedFile(new File("Semantica-Avance 1-BrandonFornes")); 
+    // Mostrar la ventana de diálogo para guardar
+    if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+        File archivo = fc.getSelectedFile();
+        
+        // Asegurarnos de que el archivo termine con la extensión .txt
+        if (!archivo.getName().toLowerCase().endsWith(".txt")) {
+            archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
+        }
+
+        // Procedemos a escribir el archivo en la ruta seleccionada
+        try (FileWriter fw = new FileWriter(archivo);
+             BufferedWriter bw = new BufferedWriter(fw);
+             PrintWriter out = new PrintWriter(bw)) {
+
+            // Título opcional al principio del archivo
+            out.println("=== REPORTE DE EXPRESIONES (INFIJA A PREFIJA) ===");
+            out.println(); // Línea en blanco
+
+            // Iteramos sobre nuestra lista de operaciones y las escribimos en el archivo
+            for (String operacion : registroOperaciones) {
+                out.println(operacion); // La variable operacion ya tiene el formato "linea: X | infijo : ... | prefijo : ..."
+            }
+
+            // Opcional: Mostrar un mensaje de éxito al usuario
+            JOptionPane.showMessageDialog(this, 
+                "Las operaciones se han exportado correctamente a:\n" + archivo.getAbsolutePath(), 
+                "Exportación Exitosa", 
+                JOptionPane.INFORMATION_MESSAGE);
+            
+            System.out.println("Las operaciones se han exportado en: " + archivo.getAbsolutePath());
+
+        } catch (IOException e) {
+            // Mostrar un mensaje de error al usuario
+            JOptionPane.showMessageDialog(this, 
+                "Error al guardar el archivo:\n" + e.getMessage(), 
+                "Error de Exportación", 
+                JOptionPane.ERROR_MESSAGE);
+            
+            System.err.println("Error al intentar exportar el archivo: " + e.getMessage());
+        }
+    }
+    }
 
     public static void main(String[] args) {
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) {}
