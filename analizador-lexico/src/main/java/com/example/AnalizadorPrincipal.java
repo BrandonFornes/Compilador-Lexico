@@ -44,11 +44,15 @@ public class AnalizadorPrincipal extends JFrame {
     private List<Identificador> registroIdentificadores = new ArrayList<>();
     private boolean EsDeclaracion = true;
 
+    private int indiceGlobalPrefijo = 0;
+    private int contadorTemporalesGlobal = 1;
+
     //Variables SEMANTICA
     boolean leyendoOperacion = false;
     List<Object[]> expresionActual = new ArrayList<>();
     int lineaOperacionActual = 0;
     public List<String> registroOperaciones = new ArrayList<>();
+    public List<List<Object[]>> operacionesPrefijasTokens = new ArrayList<>();
 
     Object[] tokenIzquierdo = null;
     Object[] tokenAsignacion = null;
@@ -127,10 +131,10 @@ public class AnalizadorPrincipal extends JFrame {
         {},
         {"A1", "main", "(", ")","800", "{", "STATU", "A2","801", "}"},
         {";", "STATU", "A2"},
-        {"reg","804", "id", "{","802", "id", "A3", "}","803","810", "A1"},
+        {"reg","813", "id", "{","802","806", "id", "A3", "}","803","810", "A1"},
         {",", "id", "A3"},
         {"var","804", "A4", "id", "A6", "A7", ";","810", "A1"},
-        {"reg", "id"},
+        {"reg","814", "id","815"},
         {",","807", "const decimal", "A5"},
         {"[","807", "const decimal", "A5", "]"},
         {",", "A4", "id", "A6", "A7"},
@@ -164,10 +168,10 @@ public class AnalizadorPrincipal extends JFrame {
         {"while", "(", "OR", ")", "STATU"},
         {"do", "STATU", "while", "(", "OR", ")"},
         {"return", "OR"},
-        {"for", "(","802", "OR", "B3", ")", "STATU","803"},
+        {"for", "(","802","801", "OR", "B3", ")", "STATU","803"},
         {",", "OR", "B3"},
-        {":", "OR"},
-        {";", "STATU", ";", "OR", "B1"},
+        {":","800", "OR"},
+        {";","800", "STATU", ";", "OR", "B1"},
         {"switch", "(", "OR", ")", "{", "case", "OR", ":", "STATU", "B4", "}"},
         {";", "STATU", "B4"},
         {"break", "B5"},
@@ -810,8 +814,11 @@ public class AnalizadorPrincipal extends JFrame {
         //JButton btntxtAvance2 = new JButton("Crear txt Avance 2");
         //btntxtAvance2.addActionListener(e -> ExportarAvance2());
 
-        JButton btntxtAvance1Semantica = new JButton("Crear txt Avance 1 Semantica");
-        btntxtAvance1Semantica.addActionListener(e -> ExportarOperacionesTXT());
+        // JButton btntxtAvance1Semantica = new JButton("Crear txt Avance 1 Semantica");
+        // btntxtAvance1Semantica.addActionListener(e -> ExportarOperacionesTXT());
+
+        JButton btntxtAvance2Semantica = new JButton("Crear txt Avance 2 Semantica");
+        btntxtAvance2Semantica.addActionListener(e -> ExportarCuadruplosTXT());
 
         fileNameLabel = new JLabel(" Sin archivo ");
         fileNameLabel.setForeground(TEXT_MAIN);
@@ -821,7 +828,8 @@ public class AnalizadorPrincipal extends JFrame {
         bar.add(btnXLS);
         //bar.add(btntxtAvance1);
         //bar.add(btntxtAvance2);
-        bar.add(btntxtAvance1Semantica);
+        //bar.add(btntxtAvance1Semantica);
+        bar.add(btntxtAvance2Semantica);
         bar.add(fileNameLabel);
         
         return bar;
@@ -1215,10 +1223,14 @@ public class AnalizadorPrincipal extends JFrame {
         int numAmbito = 1;
         Identificador funcionActual = null;
         Identificador arregloActual = null;
+        boolean esTipoRegistro = false;
+        boolean esDefinicionRegistro = false;
+        String tipoPersonalizado = "";
         pilaIdentificadores.clear();
         pilaIdentificadores.push(new HashMap<>());
         registroIdentificadores.clear();
         registroOperaciones.clear();
+        operacionesPrefijasTokens.clear();
         if (!listaTokens.isEmpty() && listaTokens.get(listaTokens.size()-1)[1].equals("$")) {
             listaTokens.remove(listaTokens.size()-1);
         }
@@ -1290,9 +1302,28 @@ public class AnalizadorPrincipal extends JFrame {
                 pilaSintactica.pop();
                 continue;
             }
+            if (tope.equals("813")){
+                claseActual = "REG";
+                esDefinicionRegistro = true; // ¡NUEVO! Es el padre, debe llevar contadores
+                pilaSintactica.pop();
+                continue;
+            }
+            if (tope.equals("814")){
+                esTipoRegistro = true; // Avisamos que el próximo ID no es variable, es un Tipo
+                pilaSintactica.pop();
+                continue;
+            }
+            if (tope.equals("815")){
+                claseActual = "REG";
+                esDefinicionRegistro = false; // ¡NUEVO! Es solo una variable, NO lleva contadores
+                pilaSintactica.pop();
+                continue;
+            }
             
             if (tope.equals("810")){
                 claseActual = ""; // Regresa a modo "Uso de variable" (no declaración)
+                tipoPersonalizado = "";
+                esDefinicionRegistro = false; // ¡NUEVO! Apagamos la bandera por seguridad
                 arregloActual = null;   // ¡Seguridad añadida! Matamos la referencia al arreglo
                 funcionActual = null;   // También limpiamos la función por si acaso
                 pilaSintactica.pop();
@@ -1364,6 +1395,8 @@ public class AnalizadorPrincipal extends JFrame {
                     prefijaCompleta.addAll(prefijaDer);
                 }
 
+                operacionesPrefijasTokens.add(prefijaCompleta);
+
                 StringBuilder textoInfijo = new StringBuilder();
                 for (Object[] token : infijaCompleta) {
                     textoInfijo.append(token[1]).append(" "); // token[1] es el lexema ("x", "+", etc.)
@@ -1401,9 +1434,14 @@ public class AnalizadorPrincipal extends JFrame {
                 if (terminalActual.equals("id")){
                     String lexemaActual = (String) tokenActual[1];
                     int ambitoNum = pilaContadorAmbito.peek();
+
+                    if (esTipoRegistro) {
+                        tipoPersonalizado = lexemaActual; // Guardamos "MiRegistro"
+                        esTipoRegistro = false;           // Apagamos la bandera
+                    }
                     
                     //TODO COMPROBAR QUE SEA IGUAL CON ESDECLARACION
-                    if (!claseActual.isEmpty()){
+                    else if (!claseActual.isEmpty()){
                         Map<String, Identificador> ambitoLocal = pilaIdentificadores.peek();
                         
                         if (ambitoLocal.containsKey(lexemaActual)){
@@ -1414,10 +1452,10 @@ public class AnalizadorPrincipal extends JFrame {
                             
                         }
                         else{
-                            String tipo = getTipo(tokenActual);
+                            String tipo = tipoPersonalizado.isEmpty() ? getTipo(tokenActual) : tipoPersonalizado;
                             Identificador nuevoId = new Identificador(lexemaActual, tipo, claseActual, ambitoNum);
 
-                            if (claseActual.equals("FUNC")){
+                            if (claseActual.equals("FUNC")|| (claseActual.equals("REG") && esDefinicionRegistro)){
                                 funcionActual = nuevoId;
                                 nuevoId.numeroPar = 0;
 
@@ -1544,6 +1582,15 @@ public class AnalizadorPrincipal extends JFrame {
         }
         return -1;
     }
+    private boolean esOperadorBinario(String op) {
+        return op.equals("+") || op.equals("-") || op.equals("*") || op.equals("/") || op.equals("%") || op.equals("^") ||
+            op.equals("<") || op.equals("<=") || op.equals(">") || op.equals(">=") || op.equals("==") || op.equals("!=") ||
+            op.equals("&&") || op.equals("||") || op.equals("&") || op.equals("|");
+    }
+
+    private boolean esAsignacion(String op) {
+        return op.equals("=") || op.equals("+=") || op.equals("-=") || op.equals("*=") || op.equals("/=");
+    }
 
     public List<Object[]> convertirAPrefijo(List<Object[]> infija) {
         List<Object[]> invertida = new ArrayList<>();
@@ -1600,6 +1647,46 @@ public class AnalizadorPrincipal extends JFrame {
         // 3. Invertir el resultado final
         Collections.reverse(prefijaInvertida);
         return prefijaInvertida;
+    }
+    private String generarCuadruplosRecursivo(List<Object[]> prefijo, PrintWriter out) {
+        // Si ya leímos toda la lista, salimos
+        if (indiceGlobalPrefijo >= prefijo.size()) {
+            return "";
+        }
+
+        // Tomamos el token actual y avanzamos el apuntador global
+        String lexemaActual = (String) prefijo.get(indiceGlobalPrefijo)[1];
+        indiceGlobalPrefijo++;
+
+        // CASO 1: Si es un operador aritmético, relacional o lógico
+        if (esOperadorBinario(lexemaActual)) {
+            // LLAMADA RECURSIVA: Pausamos este operador y mandamos buscar su lado izquierdo
+            String val1 = generarCuadruplosRecursivo(prefijo, out);
+            
+            // LLAMADA RECURSIVA: Cuando regrese el izquierdo, mandamos buscar su lado derecho
+            String val2 = generarCuadruplosRecursivo(prefijo, out);
+
+            // ¡MAGIA! Cuando ya tenemos ambos valores, imprimimos y retornamos el Temporal
+            String temporalAsignado = "T" + contadorTemporalesGlobal++;
+            out.println(lexemaActual + "," + val1 + "," + val2 + "," + temporalAsignado);
+            
+            return temporalAsignado; // Retornamos "T1" para que lo use el operador de más arriba
+        } 
+        // CASO 2: Si es una asignación (=)
+        else if (esAsignacion(lexemaActual)) {
+            String val1 = generarCuadruplosRecursivo(prefijo, out);
+            String val2 = generarCuadruplosRecursivo(prefijo, out);
+
+            // La asignación no genera un temporal nuevo
+            out.println(lexemaActual + "," + val1 + "," + val2);
+            
+            return val1;
+        } 
+        // CASO 3: Es una variable o un número (Hoja)
+        else {
+            // Simplemente retornamos el número o letra hacia arriba
+            return lexemaActual;
+        }
     }
     
 
@@ -1813,7 +1900,7 @@ public class AnalizadorPrincipal extends JFrame {
                 
                 // Escribir Errores (Índice 9) y sumarlos
                 fila.createCell(9).setCellValue(matrizErrores[i]);
-                totalFila += matrizErrores[i];
+                //totalFila += matrizErrores[i];
                 totalErrores += matrizErrores[i];
                 
                 // Escribir Total por fila (Índice 10)
@@ -2016,55 +2103,108 @@ private void llenarDatosHoja(Sheet hoja, List<Object[]> datos) {
 //         }
 //     }
 // }
-    private void ExportarOperacionesTXT() {
-    // Configuramos el JFileChooser
-    JFileChooser fc = new JFileChooser();
-    fc.setDialogTitle("Exportar Operaciones Infijas y Prefijas a TXT");
+    // private void ExportarOperacionesTXT() {
+    // // Configuramos el JFileChooser
+    // JFileChooser fc = new JFileChooser();
+    // fc.setDialogTitle("Exportar Operaciones Infijas y Prefijas a TXT");
     
-    // Filtro para que por defecto busque/guarde con extensión .txt
-    fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
-    fc.setSelectedFile(new File("Semantica-Avance 1-BrandonFornes")); 
-    // Mostrar la ventana de diálogo para guardar
-    if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-        File archivo = fc.getSelectedFile();
+    // // Filtro para que por defecto busque/guarde con extensión .txt
+    // fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
+    // fc.setSelectedFile(new File("Semantica-Avance 1-BrandonFornes")); 
+    // // Mostrar la ventana de diálogo para guardar
+    // if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+    //     File archivo = fc.getSelectedFile();
         
-        // Asegurarnos de que el archivo termine con la extensión .txt
-        if (!archivo.getName().toLowerCase().endsWith(".txt")) {
-            archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
-        }
+    //     // Asegurarnos de que el archivo termine con la extensión .txt
+    //     if (!archivo.getName().toLowerCase().endsWith(".txt")) {
+    //         archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
+    //     }
 
-        // Procedemos a escribir el archivo en la ruta seleccionada
-        try (FileWriter fw = new FileWriter(archivo);
-             BufferedWriter bw = new BufferedWriter(fw);
-             PrintWriter out = new PrintWriter(bw)) {
+    //     // Procedemos a escribir el archivo en la ruta seleccionada
+    //     try (FileWriter fw = new FileWriter(archivo);
+    //          BufferedWriter bw = new BufferedWriter(fw);
+    //          PrintWriter out = new PrintWriter(bw)) {
 
-            // Título opcional al principio del archivo
-            out.println("=== REPORTE DE EXPRESIONES (INFIJA A PREFIJA) ===");
-            out.println(); // Línea en blanco
+    //         // Título opcional al principio del archivo
+    //         out.println("=== REPORTE DE EXPRESIONES (INFIJA A PREFIJA) ===");
+    //         out.println(); // Línea en blanco
 
-            // Iteramos sobre nuestra lista de operaciones y las escribimos en el archivo
-            for (String operacion : registroOperaciones) {
-                out.println(operacion); // La variable operacion ya tiene el formato "linea: X | infijo : ... | prefijo : ..."
+    //         // Iteramos sobre nuestra lista de operaciones y las escribimos en el archivo
+    //         for (String operacion : registroOperaciones) {
+    //             out.println(operacion); // La variable operacion ya tiene el formato "linea: X | infijo : ... | prefijo : ..."
+    //         }
+
+    //         // Opcional: Mostrar un mensaje de éxito al usuario
+    //         JOptionPane.showMessageDialog(this, 
+    //             "Las operaciones se han exportado correctamente a:\n" + archivo.getAbsolutePath(), 
+    //             "Exportación Exitosa", 
+    //             JOptionPane.INFORMATION_MESSAGE);
+            
+    //         System.out.println("Las operaciones se han exportado en: " + archivo.getAbsolutePath());
+
+    //     } catch (IOException e) {
+    //         // Mostrar un mensaje de error al usuario
+    //         JOptionPane.showMessageDialog(this, 
+    //             "Error al guardar el archivo:\n" + e.getMessage(), 
+    //             "Error de Exportación", 
+    //             JOptionPane.ERROR_MESSAGE);
+            
+    //         System.err.println("Error al intentar exportar el archivo: " + e.getMessage());
+    //     }
+    // }
+    // }
+    private void ExportarCuadruplosTXT() {
+        JFileChooser fc = new JFileChooser();
+        fc.setDialogTitle("Exportar Cuádruplos a TXT");
+        fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
+        fc.setSelectedFile(new File("Semantica-Avance 2-BrandonFornes")); 
+
+        if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File archivo = fc.getSelectedFile();
+            if (!archivo.getName().toLowerCase().endsWith(".txt")) {
+                archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
             }
 
-            // Opcional: Mostrar un mensaje de éxito al usuario
-            JOptionPane.showMessageDialog(this, 
-                "Las operaciones se han exportado correctamente a:\n" + archivo.getAbsolutePath(), 
-                "Exportación Exitosa", 
-                JOptionPane.INFORMATION_MESSAGE);
-            
-            System.out.println("Las operaciones se han exportado en: " + archivo.getAbsolutePath());
+            try (FileWriter fw = new FileWriter(archivo);
+                BufferedWriter bw = new BufferedWriter(fw);
+                PrintWriter out = new PrintWriter(bw)) {
 
-        } catch (IOException e) {
-            // Mostrar un mensaje de error al usuario
-            JOptionPane.showMessageDialog(this, 
-                "Error al guardar el archivo:\n" + e.getMessage(), 
-                "Error de Exportación", 
-                JOptionPane.ERROR_MESSAGE);
-            
-            System.err.println("Error al intentar exportar el archivo: " + e.getMessage());
+                contadorTemporalesGlobal = 1; // Reiniciamos los contadores
+                int lineaAnterior = -1;
+
+                for (List<Object[]> operacion : operacionesPrefijasTokens) {
+                    
+                    int lineaActual = (int) operacion.get(0)[2];
+                    
+                    // Imprimir el encabezado solo una vez por línea
+                    if (lineaActual != lineaAnterior) {
+                        StringBuilder prefijoStr = new StringBuilder();
+                        for (Object[] token : operacion) {
+                            prefijoStr.append(token[1]).append(" ");
+                        }
+                        out.println("Línea: " + lineaActual + " | " + prefijoStr.toString().trim());
+                        lineaAnterior = lineaActual; 
+                    }
+
+                    // Reiniciamos el índice apuntador para empezar a leer esta línea desde el 0
+                    indiceGlobalPrefijo = 0; 
+                    
+                    // ==========================================
+                    // LÓGICA RECURSIVA PURA
+                    // ==========================================
+                    generarCuadruplosRecursivo(operacion, out);
+                    
+                    out.println(); // Salto de línea para separar la siguiente ecuación
+                }
+
+                JOptionPane.showMessageDialog(this, "Exportado correctamente.", 
+                    "Exportación Exitosa", JOptionPane.INFORMATION_MESSAGE);
+
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(this, "Error al guardar el archivo:\n" + e.getMessage(), 
+                    "Error", JOptionPane.ERROR_MESSAGE);
+            }
         }
-    }
     }
 
     public static void main(String[] args) {
