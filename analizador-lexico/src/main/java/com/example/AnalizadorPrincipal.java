@@ -45,8 +45,7 @@ public class AnalizadorPrincipal extends JFrame {
     private boolean EsDeclaracion = true;
 
     private int indiceGlobalPrefijo = 0;
-    private int contadorTemporalesGlobal = 1;
-
+    
     //Variables SEMANTICA
     boolean leyendoOperacion = false;
     List<Object[]> expresionActual = new ArrayList<>();
@@ -56,6 +55,79 @@ public class AnalizadorPrincipal extends JFrame {
 
     Object[] tokenIzquierdo = null;
     Object[] tokenAsignacion = null;
+
+    private int[] contadoresTemporales = new int[9];
+
+    public static final int BIN = 0;
+    public static final int DEC = 1;
+    public static final int OCT = 2;
+    public static final int HEX = 3;
+    public static final int REAL = 4;
+    public static final int EXP = 5;
+    public static final int CAD = 6;
+    public static final int BOOL = 7;
+    public static final int VAR = 8;
+    private static final int E = -1;
+
+    private static final String[] NOMBRES = {
+        "Binario", "Decimal", "Octal", "Hexadecimal", "Real", "Exponencial", "Cadena", "Booleana", "Variant"
+    };
+    private static final String[] PREFIJOS_TEMP = {
+        "TBI", "TD", "TO", "TH", "TR", "TE", "TC", "TB", "TV"
+    };
+
+    private static final int[][] SUMA = {
+        { BIN, E, E, E, E, E, CAD, E },
+        { E, DEC, E, E, REAL, EXP, CAD, E },
+        { E, E, OCT, E, E, E, CAD, E },
+        { E, E, E, HEX, E, E, CAD, E },
+        { E, REAL, E, E, REAL, EXP, CAD, E },
+        { E, EXP, E, E, EXP, EXP, CAD, E },
+        { CAD, CAD, CAD, CAD, CAD, CAD, CAD, CAD },
+        { E, E, E, E, E, E, CAD, CAD }
+    };
+    private static final int[][] RESTA = {
+        { BIN, E, E, E, E, E, E, E },
+        { E, DEC, E, E, REAL, EXP, E, E },
+        { E, E, OCT, E, E, E, E, E },
+        { E, E, E, HEX, E, E, E, E },
+        { E, REAL, E, E, REAL, EXP, E, E },
+        { E, EXP, E, E, EXP, EXP, E, E },
+        { E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E }
+    };
+    private static final int[][] MULT = RESTA;
+    
+    private static final int[][] DIV = {
+        { BIN, E, E, E, E, E, E, E },
+        { E, REAL, E, E, REAL, EXP, E, E },
+        { E, E, OCT, E, E, E, E, E },
+        { E, E, E, HEX, E, E, E, E },
+        { E, REAL, E, E, EXP, EXP, E, E },
+        { E, EXP, E, E, EXP, EXP, E, E },
+        { E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E }
+    };
+    private static final int[][] REL = {
+        { BOOL, E, E, E, E, E, E, E },
+        { E, BOOL, E, E, BOOL, BOOL, E, E },
+        { E, E, BOOL, E, E, E, E, E },
+        { E, E, E, BOOL, E, E, E, E },
+        { E, BOOL, E, E, BOOL, BOOL, E, E },
+        { E, BOOL, E, E, BOOL, BOOL, E, E },
+        { E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E }
+    };
+    private static final int[][] LOG = {
+        { E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, BOOL }
+    };
 
     private static String[][] matriz;
     private static String[][] matrizSintactica;
@@ -728,19 +800,19 @@ public class AnalizadorPrincipal extends JFrame {
     public String getTipo(Object[] token){
         int numToken = Integer.parseInt(token[0].toString());
         switch (numToken) {
-            case -60:
+            case -53,-60:
                 return "Cadena";
-            case -61:
+            case -54,-61:
                 return "Bin";
-            case -62:
+            case -57,-62:
                 return "Dec";
-            case -63:
+            case -55,-63:
                 return "Oct";
-            case -64:
+            case -56,-64:
                 return "Hex";
-            case -65:
+            case -58,-65:
                 return "Real";
-            case -66:
+            case -59,-66:
                 return "exp";
             case -67:
                 return "Boolean";
@@ -1440,12 +1512,10 @@ public class AnalizadorPrincipal extends JFrame {
                         esTipoRegistro = false;           // Apagamos la bandera
                     }
                     
-                    //TODO COMPROBAR QUE SEA IGUAL CON ESDECLARACION
                     else if (!claseActual.isEmpty()){
                         Map<String, Identificador> ambitoLocal = pilaIdentificadores.peek();
                         
                         if (ambitoLocal.containsKey(lexemaActual)){
-                            //TODO MANDAR A ERROR TIPO AMBITO
                             String descripcion = "El identificador '" + lexemaActual + "' ya ha sido declarado en el ámbito " + ambitoNum; 
                             Object[] datosError = {542, descripcion, tokenActual[1], "Ambito", tokenActual[2],ambitoNum};
                             listaErroresSemantico.add(datosError);
@@ -1486,7 +1556,6 @@ public class AnalizadorPrincipal extends JFrame {
                             }
                         }
                         if (!existe) {
-                            //TODO MANDAR A ERROR
                             String descripcion = "Error Semántico: '" + lexemaActual + "' no ha sido declarada. " + ambitoNum;
                             Object[] datosError = {543, descripcion, tokenActual[1], "Ambito", tokenActual[2],ambitoNum};
                             listaErroresSemantico.add(datosError);
@@ -1507,7 +1576,6 @@ public class AnalizadorPrincipal extends JFrame {
 
                 if (columna == null) {
                     System.err.println("Error Sintáctico: Token '" + terminalActual + "' no reconocido en la tabla.");
-                    //TODO Mandarlo a lista aunque no deberia ocurrir en pruebas
                     break;
                 }
                 int indiceProduccion = Integer.parseInt(matrizSintactica[fila][columna]);
@@ -1648,46 +1716,162 @@ public class AnalizadorPrincipal extends JFrame {
         Collections.reverse(prefijaInvertida);
         return prefijaInvertida;
     }
-    private String generarCuadruplosRecursivo(List<Object[]> prefijo, PrintWriter out) {
-        // Si ya leímos toda la lista, salimos
-        if (indiceGlobalPrefijo >= prefijo.size()) {
-            return "";
-        }
 
-        // Tomamos el token actual y avanzamos el apuntador global
-        String lexemaActual = (String) prefijo.get(indiceGlobalPrefijo)[1];
+    private String[] generarCuadruplosRecursivo(List<Object[]> prefijo, PrintWriter out) {
+        if (indiceGlobalPrefijo >= prefijo.size()) {
+            return new String[] {"", String.valueOf(VAR)};
+        }
+        Object[] tokenActual = prefijo.get(indiceGlobalPrefijo);
+        String lexemaActual = (String) tokenActual[1];
         indiceGlobalPrefijo++;
 
-        // CASO 1: Si es un operador aritmético, relacional o lógico
+        // CASO 1: Operador Binario
         if (esOperadorBinario(lexemaActual)) {
-            // LLAMADA RECURSIVA: Pausamos este operador y mandamos buscar su lado izquierdo
-            String val1 = generarCuadruplosRecursivo(prefijo, out);
-            
-            // LLAMADA RECURSIVA: Cuando regrese el izquierdo, mandamos buscar su lado derecho
-            String val2 = generarCuadruplosRecursivo(prefijo, out);
+            String[] nodoIzq = generarCuadruplosRecursivo(prefijo, out);
+            String[] nodoDer = generarCuadruplosRecursivo(prefijo, out);
 
-            // ¡MAGIA! Cuando ya tenemos ambos valores, imprimimos y retornamos el Temporal
-            String temporalAsignado = "T" + contadorTemporalesGlobal++;
+            String val1 = nodoIzq[0];
+            int tipo1 = Integer.parseInt(nodoIzq[1]);
+            
+            String val2 = nodoDer[0];
+            int tipo2 = Integer.parseInt(nodoDer[1]);
+
+            int tipoResultado = evaluarOperacion(tipo1, tipo2, lexemaActual);
+
+            // ==========================================
+            // ¡REGLA APLICADA! Incompatibilidad -> Variant
+            // ==========================================
+            if (tipoResultado == E) {
+                String errorMsg = "Incompatibilidad de tipos: no se puede aplicar '" + lexemaActual + 
+                                "' entre " + NOMBRES[tipo1] + " y " + NOMBRES[tipo2];
+                
+                // Guardas el error en tu lista global para imprimirlo en tu tabla/Excel
+                // Object[] error = { ... }; 
+                // listaErroresSemantico.add(error);
+                
+                System.out.println("Error Semántico: " + errorMsg);
+                
+                // Forzamos el tipo a Variant (8) para recuperar el sistema
+                tipoResultado = VAR; 
+            }
+
+            // Se genera el temporal correcto (Si hubo error, generará un "TVX")
+            String prefijoTemp = PREFIJOS_TEMP[tipoResultado];
+            contadoresTemporales[tipoResultado]++;
+            int numeroActual = contadoresTemporales[tipoResultado]; 
+
+            String temporalAsignado = prefijoTemp + numeroActual;
+            
             out.println(lexemaActual + "," + val1 + "," + val2 + "," + temporalAsignado);
             
-            return temporalAsignado; // Retornamos "T1" para que lo use el operador de más arriba
+            return new String[] {temporalAsignado, String.valueOf(tipoResultado)};
         } 
-        // CASO 2: Si es una asignación (=)
+        // CASO 2: Asignación
         else if (esAsignacion(lexemaActual)) {
-            String val1 = generarCuadruplosRecursivo(prefijo, out);
-            String val2 = generarCuadruplosRecursivo(prefijo, out);
-
-            // La asignación no genera un temporal nuevo
-            out.println(lexemaActual + "," + val1 + "," + val2);
+            String[] nodoIzq = generarCuadruplosRecursivo(prefijo, out);
+            String[] nodoDer = generarCuadruplosRecursivo(prefijo, out);
             
-            return val1;
+            int tipoDestino = Integer.parseInt(nodoIzq[1]);
+            int tipoValor = Integer.parseInt(nodoDer[1]);
+            
+            // Validación opcional de asignación incompatible
+            if (tipoDestino != tipoValor && tipoDestino != VAR && tipoValor != VAR) {
+                // Aquí también podrías registrar error si intentan guardar un CAD en un DEC
+            }
+
+            out.println(lexemaActual + "," + nodoIzq[0] + "," + nodoDer[0]);
+            return nodoIzq;
         } 
-        // CASO 3: Es una variable o un número (Hoja)
+        // CASO 3: Operando (Variable o Número)
         else {
-            // Simplemente retornamos el número o letra hacia arriba
-            return lexemaActual;
+            int tipoLexema = obtenerTipoToken(tokenActual);
+            return new String[] {lexemaActual, String.valueOf(tipoLexema)};
         }
     }
+
+    private int obtenerTipoToken(Object[] token) {
+        // 1. Usar tu método existente para ver si es un literal numérico/texto
+        String tipoDesdeLexico = getTipo(token);
+        
+        if (!tipoDesdeLexico.isEmpty()) {
+            // Es una constante (ej. token -62). Lo convertimos al índice de la matriz.
+            return convertirStringAInt(tipoDesdeLexico);
+        }
+        
+        // 2. Si tu método regresó "", significa que NO es un literal, es una VARIABLE.
+        String lexema = (String) token[1];
+        Identificador id = buscarEnTabla(lexema);
+        
+        if (id != null) {
+            // SÍ ESTÁ DECLARADA: Convertimos el tipo que tenga en la tabla a su índice.
+            // Asumiendo que id.tipo guarda "Dec", "Cadena", etc.
+            return convertirStringAInt(id.tipo);
+        } else {
+            // NO ESTÁ DECLARADA: ¡Se activa la trampa del Variant!
+            return VAR; 
+        }
+    }
+    private int convertirStringAInt(String tipoStr) {
+        if (tipoStr == null) return VAR;
+        
+        switch (tipoStr.toLowerCase()) {
+            case "bin": return BIN; // 0
+            case "dec": return DEC; // 1
+            case "oct": return OCT; // 2
+            case "hex": return HEX; // 3
+            case "real": return REAL; // 4
+            case "exp": return EXP; // 5
+            case "cadena": return CAD; // 6
+            case "boolean": return BOOL; // 7
+            default: return VAR; // 8
+        }
+    }
+
+    private int evaluarOperacion(int tipo1, int tipo2, String operador) {
+        // 1. PRIMERO: Los operadores que siempre devuelven BOOLEANOS
+        if (operador.equals("<") || operador.equals("<=") || operador.equals(">") || 
+            operador.equals(">=") || operador.equals("==") || operador.equals("!=")) {
+            
+            // Si uno es Variant, perdonamos el error, pero forzamos a que el resultado sea BOOL
+            if (tipo1 == VAR || tipo2 == VAR) return BOOL; 
+            
+            return REL[tipo1][tipo2];
+        }
+            
+        // if (operador.equals("&&") || operador.equals("||") || operador.equals("&") || operador.equals("|")) {
+        //     if (tipo1 == VAR || tipo2 == VAR) return BOOL; 
+        //     return LOG[tipo1][tipo2];
+        // }
+        // ¡NUEVA REGLA DEL VARIANT APLICADA!
+        // Si ambos son Variant, se queda como Variant
+        if (tipo1 == VAR && tipo2 == VAR) return VAR;
+        // Si uno es Variant, asume la identidad del otro tipo
+        if (tipo1 == VAR) return tipo2;
+        if (tipo2 == VAR) return tipo1;
+
+        // Búsqueda normal en el Cubo Semántico
+        if (operador.equals("+") || operador.equals("+=")) return SUMA[tipo1][tipo2];
+        if (operador.equals("-") || operador.equals("-=")) return RESTA[tipo1][tipo2];
+        if (operador.equals("*") || operador.equals("*=") || operador.equals("%")) return MULT[tipo1][tipo2];
+        if (operador.equals("/") || operador.equals("/=")) return DIV[tipo1][tipo2];
+        
+        if (operador.equals("<") || operador.equals("<=") || operador.equals(">") || 
+            operador.equals(">=") || operador.equals("==") || operador.equals("!=")) return REL[tipo1][tipo2];
+            
+        if (operador.equals("&&") || operador.equals("||") || operador.equals("&") || operador.equals("|")) return LOG[tipo1][tipo2];
+
+        return E; // Retorna Error si hay incompatibilidad
+    }
+
+    private Identificador buscarEnTabla(String lexemaActual) {
+        for (Map<String, Identificador> ambito : pilaIdentificadores) {
+            if (ambito.containsKey(lexemaActual)) {
+                return ambito.get(lexemaActual); // Found it! Return the Identifier object.
+            }
+        }
+        return null;
+    }
+
     
 
      private void imprimirEstadisticasNoTerminales() {
@@ -2001,158 +2185,7 @@ private void llenarDatosHoja(Sheet hoja, List<Object[]> datos) {
         hoja.autoSizeColumn(i);
     }
 }
-    //Ambito
-//     private void ExportarAvance1() {
-//         // Configuramos el JFileChooser
-//         JFileChooser fc = new JFileChooser();
-//         fc.setDialogTitle("Exportar Avance a TXT");
-        
-//         // Filtro para que por defecto busque/guarde con extensión .txt
-//         fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
-
-//         // Mostrar la ventana de diálogo para guardar. 
-//         // 'this' asume que el método está dentro de un JFrame o JPanel.
-//         if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-//             File archivo = fc.getSelectedFile();
-            
-//             // Asegurarnos de que el archivo termine con la extensión .txt
-//             if (!archivo.getName().toLowerCase().endsWith(".txt")) {
-//                 archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
-//             }
-
-//             // Procedemos a escribir el archivo en la ruta seleccionada
-//             try (FileWriter fw = new FileWriter(archivo);
-//                  BufferedWriter bw = new BufferedWriter(fw);
-//                  PrintWriter out = new PrintWriter(bw)) {
-
-//                 out.println("Linea: 1 | Ocurrió: Declaracion = true ");
-
-//                 for (Object[] elemento : ListaCambiosDeclaracion) {
-//                     String lineaExportar = "Línea: " + elemento[0] + " | Ocurrió: " + elemento[1];
-//                     out.println(lineaExportar);
-//                 }
-
-//                 // Opcional: Mostrar un mensaje de éxito al usuario
-//                 JOptionPane.showMessageDialog(this, 
-//                     "El avance se ha exportado correctamente a:\n" + archivo.getAbsolutePath(), 
-//                     "Exportación Exitosa", 
-//                     JOptionPane.INFORMATION_MESSAGE);
-                
-//                 System.out.println("El avance se ha exportado en: " + archivo.getAbsolutePath());
-
-//             } catch (IOException e) {
-//                 // Mostrar un mensaje de error al usuario
-//                 JOptionPane.showMessageDialog(this, 
-//                     "Error al guardar el archivo:\n" + e.getMessage(), 
-//                     "Error", 
-//                     JOptionPane.ERROR_MESSAGE);
-                
-//                 System.err.println("Error al intentar exportar el archivo: " + e.getMessage());
-//             }
-//         }
-//     }
-//     private void ExportarAvance2() {
-//     // Configuramos el JFileChooser
-//     JFileChooser fc = new JFileChooser();
-//     fc.setDialogTitle("Exportar Avance a TXT");
     
-//     // Filtro para que por defecto busque/guarde con extensión .txt
-//     fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
-
-//     // ASIGNAR NOMBRE POR DEFECTO AQUÍ
-//     fc.setSelectedFile(new File("Ambito-BrandonFornes2.txt")); 
-
-//     // Mostrar la ventana de diálogo para guardar. 
-//     // 'this' asume que el método está dentro de un JFrame o JPanel.
-//     if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-//         File archivo = fc.getSelectedFile();
-        
-//         // Asegurarnos de que el archivo termine con la extensión .txt
-//         if (!archivo.getName().toLowerCase().endsWith(".txt")) {
-//             archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
-//         }
-
-//         // Procedemos a escribir el archivo en la ruta seleccionada
-//         try (FileWriter fw = new FileWriter(archivo);
-//              BufferedWriter bw = new BufferedWriter(fw);
-//              PrintWriter out = new PrintWriter(bw)) {
-
-//             out.println("Linea: 1 | Ambito: 0 -> Creo");
-
-//             for (Object[] elemento : ListaCambiosAmbito) {
-//                 String lineaExportar = "Línea: " + elemento[0] + " | Ambito: " + elemento[1] + " " + elemento[2];
-//                 out.println(lineaExportar);
-//             }
-
-//             // Opcional: Mostrar un mensaje de éxito al usuario
-//             JOptionPane.showMessageDialog(this, 
-//                 "El avance se ha exportado correctamente a:\n" + archivo.getAbsolutePath(), 
-//                 "Exportación Exitosa", 
-//                 JOptionPane.INFORMATION_MESSAGE);
-            
-//             System.out.println("El avance se ha exportado en: " + archivo.getAbsolutePath());
-
-//         } catch (IOException e) {
-//             // Mostrar un mensaje de error al usuario
-//             JOptionPane.showMessageDialog(this, 
-//                 "Error al guardar el archivo:\n" + e.getMessage(), 
-//                 "Error", 
-//                 JOptionPane.ERROR_MESSAGE);
-            
-//             System.err.println("Error al intentar exportar el archivo: " + e.getMessage());
-//         }
-//     }
-// }
-    // private void ExportarOperacionesTXT() {
-    // // Configuramos el JFileChooser
-    // JFileChooser fc = new JFileChooser();
-    // fc.setDialogTitle("Exportar Operaciones Infijas y Prefijas a TXT");
-    
-    // // Filtro para que por defecto busque/guarde con extensión .txt
-    // fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
-    // fc.setSelectedFile(new File("Semantica-Avance 1-BrandonFornes")); 
-    // // Mostrar la ventana de diálogo para guardar
-    // if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-    //     File archivo = fc.getSelectedFile();
-        
-    //     // Asegurarnos de que el archivo termine con la extensión .txt
-    //     if (!archivo.getName().toLowerCase().endsWith(".txt")) {
-    //         archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
-    //     }
-
-    //     // Procedemos a escribir el archivo en la ruta seleccionada
-    //     try (FileWriter fw = new FileWriter(archivo);
-    //          BufferedWriter bw = new BufferedWriter(fw);
-    //          PrintWriter out = new PrintWriter(bw)) {
-
-    //         // Título opcional al principio del archivo
-    //         out.println("=== REPORTE DE EXPRESIONES (INFIJA A PREFIJA) ===");
-    //         out.println(); // Línea en blanco
-
-    //         // Iteramos sobre nuestra lista de operaciones y las escribimos en el archivo
-    //         for (String operacion : registroOperaciones) {
-    //             out.println(operacion); // La variable operacion ya tiene el formato "linea: X | infijo : ... | prefijo : ..."
-    //         }
-
-    //         // Opcional: Mostrar un mensaje de éxito al usuario
-    //         JOptionPane.showMessageDialog(this, 
-    //             "Las operaciones se han exportado correctamente a:\n" + archivo.getAbsolutePath(), 
-    //             "Exportación Exitosa", 
-    //             JOptionPane.INFORMATION_MESSAGE);
-            
-    //         System.out.println("Las operaciones se han exportado en: " + archivo.getAbsolutePath());
-
-    //     } catch (IOException e) {
-    //         // Mostrar un mensaje de error al usuario
-    //         JOptionPane.showMessageDialog(this, 
-    //             "Error al guardar el archivo:\n" + e.getMessage(), 
-    //             "Error de Exportación", 
-    //             JOptionPane.ERROR_MESSAGE);
-            
-    //         System.err.println("Error al intentar exportar el archivo: " + e.getMessage());
-    //     }
-    // }
-    // }
     private void ExportarCuadruplosTXT() {
         JFileChooser fc = new JFileChooser();
         fc.setDialogTitle("Exportar Cuádruplos a TXT");
@@ -2168,10 +2201,12 @@ private void llenarDatosHoja(Sheet hoja, List<Object[]> datos) {
             try (FileWriter fw = new FileWriter(archivo);
                 BufferedWriter bw = new BufferedWriter(fw);
                 PrintWriter out = new PrintWriter(bw)) {
-
-                contadorTemporalesGlobal = 1; // Reiniciamos los contadores
+                
                 int lineaAnterior = -1;
 
+                for (int i = 0; i < contadoresTemporales.length; i++) {
+                    contadoresTemporales[i] = 0;
+                }
                 for (List<Object[]> operacion : operacionesPrefijasTokens) {
                     
                     int lineaActual = (int) operacion.get(0)[2];
