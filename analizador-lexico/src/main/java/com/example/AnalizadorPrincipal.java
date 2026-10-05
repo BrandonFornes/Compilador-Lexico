@@ -56,6 +56,8 @@ public class AnalizadorPrincipal extends JFrame {
     Object[] tokenIzquierdo = null;
     Object[] tokenAsignacion = null;
 
+    private List<String[]> listaCuadruplos = new ArrayList<>();
+
     private int[] contadoresTemporales = new int[9];
 
     public static final int BIN = 0;
@@ -1328,12 +1330,14 @@ public class AnalizadorPrincipal extends JFrame {
 
             if (tope.equals("800")){
                 EsDeclaracion = false;
+                claseActual = "";
                 pilaSintactica.pop();
                 continue;
             }
 
             if (tope.equals("801")){
                 EsDeclaracion = true;
+                claseActual = "VAR";
                 pilaSintactica.pop();
                 continue;
             }
@@ -1468,6 +1472,9 @@ public class AnalizadorPrincipal extends JFrame {
                 }
 
                 operacionesPrefijasTokens.add(prefijaCompleta);
+
+                indiceGlobalPrefijo = 0; // <-- CRÍTICO: Reiniciar el contador
+                generarCuadruplosRecursivo(prefijaCompleta);
 
                 StringBuilder textoInfijo = new StringBuilder();
                 for (Object[] token : infijaCompleta) {
@@ -1628,8 +1635,9 @@ public class AnalizadorPrincipal extends JFrame {
         } else {
             System.out.println("El análisis terminó con errores (Pila no vacía).");
         }
+        //CompilacionCuadruplos();
         actualizarListaErrores();
-        imprimirEstadisticasNoTerminales();
+        //imprimirEstadisticasNoTerminales();
         // for (Object[] elemento : ListaCambiosAmbito) {
         //     System.out.println("linea: " + elemento[0] + " ambito: " + elemento[1] + " ocurrio = " + elemento[2]);
         // }
@@ -1716,8 +1724,27 @@ public class AnalizadorPrincipal extends JFrame {
         Collections.reverse(prefijaInvertida);
         return prefijaInvertida;
     }
+    public void ejecutarCompilacionCuadruplos() {
+        // 1. Limpiamos cuádruplos anteriores
+        listaCuadruplos.clear();
+        
+        // 2. Reiniciamos los contadores de temporales por tipo
+        for (int i = 0; i < contadoresTemporales.length; i++) {
+            contadoresTemporales[i] = 0;
+        }
+        
+        // 3. Recorremos cada línea de código y generamos los cuádruplos en memoria
+        for (List<Object[]> operacion : operacionesPrefijasTokens) {
+            indiceGlobalPrefijo = 0; 
+            generarCuadruplosRecursivo(operacion); // Ya no se pasa 'out'
+        }
+        
+        // ¡Listo! En este punto, 'listaCuadruplos' ya tiene todos los cuádruplos 
+        // ordenados y listos para usarse en tu JTable, consola o siguiente fase.
+        System.out.println("Cuádruplos generados en memoria exitosamente. Total: " + listaCuadruplos.size());
+    }
 
-    private String[] generarCuadruplosRecursivo(List<Object[]> prefijo, PrintWriter out) {
+    private String[] generarCuadruplosRecursivo(List<Object[]> prefijo) {
         if (indiceGlobalPrefijo >= prefijo.size()) {
             return new String[] {"", String.valueOf(VAR)};
         }
@@ -1727,8 +1754,8 @@ public class AnalizadorPrincipal extends JFrame {
 
         // CASO 1: Operador Binario
         if (esOperadorBinario(lexemaActual)) {
-            String[] nodoIzq = generarCuadruplosRecursivo(prefijo, out);
-            String[] nodoDer = generarCuadruplosRecursivo(prefijo, out);
+            String[] nodoIzq = generarCuadruplosRecursivo(prefijo);
+            String[] nodoDer = generarCuadruplosRecursivo(prefijo);
 
             String val1 = nodoIzq[0];
             int tipo1 = Integer.parseInt(nodoIzq[1]);
@@ -1742,14 +1769,17 @@ public class AnalizadorPrincipal extends JFrame {
             // ¡REGLA APLICADA! Incompatibilidad -> Variant
             // ==========================================
             if (tipoResultado == E) {
-                String errorMsg = "Incompatibilidad de tipos: no se puede aplicar '" + lexemaActual + 
+                //TODO ERROR SEMANTICO "ERROR '5+8' NO COMPATIBLE"
+                String descripcion = "Incompatibilidad de tipos: no se puede aplicar '" + lexemaActual + 
                                 "' entre " + NOMBRES[tipo1] + " y " + NOMBRES[tipo2];
+                Object[] datosError = {544, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico", tokenActual[2]};
+                listaErroresSemantico.add(datosError);
                 
                 // Guardas el error en tu lista global para imprimirlo en tu tabla/Excel
                 // Object[] error = { ... }; 
                 // listaErroresSemantico.add(error);
                 
-                System.out.println("Error Semántico: " + errorMsg);
+                //System.out.println("Error Semántico: " + descripcion);
                 
                 // Forzamos el tipo a Variant (8) para recuperar el sistema
                 tipoResultado = VAR; 
@@ -1762,54 +1792,76 @@ public class AnalizadorPrincipal extends JFrame {
 
             String temporalAsignado = prefijoTemp + numeroActual;
             
-            out.println(lexemaActual + "," + val1 + "," + val2 + "," + temporalAsignado);
-            
+            System.out.println(lexemaActual + "," + val1 + "," + val2 + "," + temporalAsignado);
+            listaCuadruplos.add(new String[]{lexemaActual, nodoIzq[0], nodoDer[0], temporalAsignado});
             return new String[] {temporalAsignado, String.valueOf(tipoResultado)};
         } 
         // CASO 2: Asignación
         else if (esAsignacion(lexemaActual)) {
-            String[] nodoIzq = generarCuadruplosRecursivo(prefijo, out);
-            String[] nodoDer = generarCuadruplosRecursivo(prefijo, out);
+            String[] nodoIzq = generarCuadruplosRecursivo(prefijo);
+            String[] nodoDer = generarCuadruplosRecursivo(prefijo);
             
             int tipoDestino = Integer.parseInt(nodoIzq[1]);
             int tipoValor = Integer.parseInt(nodoDer[1]);
+            String val1 = nodoIzq[0];
+            String val2 = nodoDer[0];
             
             // Validación opcional de asignación incompatible
             if (tipoDestino != tipoValor && tipoDestino != VAR && tipoValor != VAR) {
                 // Aquí también podrías registrar error si intentan guardar un CAD en un DEC
+                String descripcion = "Incompatibilidad de tipos: no se puede asignar '" + lexemaActual + 
+                                "' entre " + NOMBRES[tipoDestino] + " y " + NOMBRES[tipoValor];
+                Object[] datosError = {544, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico", tokenActual[2]};
+                listaErroresSemantico.add(datosError);
             }
 
-            out.println(lexemaActual + "," + nodoIzq[0] + "," + nodoDer[0]);
+            System.out.println(lexemaActual + "," + nodoIzq[0] + "," + nodoDer[0]);
             return nodoIzq;
         } 
         // CASO 3: Operando (Variable o Número)
         else {
             int tipoLexema = obtenerTipoToken(tokenActual);
+            if (tipoLexema == VAR){
+                contadoresTemporales[VAR]++;
+                int numeroActual = contadoresTemporales[VAR]; 
+                
+                // 2. Generamos la cadena del temporal (ej. "TV" + 1 -> "TV1")
+                String temporalVariant = PREFIJOS_TEMP[VAR] + numeroActual;
+                
+                // 3. Retornamos el temporal EN LUGAR del lexema original
+                return new String[] {temporalVariant, String.valueOf(tipoLexema)};
+            }
             return new String[] {lexemaActual, String.valueOf(tipoLexema)};
         }
     }
 
     private int obtenerTipoToken(Object[] token) {
-        // 1. Usar tu método existente para ver si es un literal numérico/texto
-        String tipoDesdeLexico = getTipo(token);
-        
-        if (!tipoDesdeLexico.isEmpty()) {
-            // Es una constante (ej. token -62). Lo convertimos al índice de la matriz.
-            return convertirStringAInt(tipoDesdeLexico);
+        int numToken = Integer.parseInt(token[0].toString());
+        if (esUnIdentificador(numToken)){
+            String lexema = (String) token[1];
+            Identificador id = buscarEnTabla(lexema); // Lo buscamos en los ámbitos
+            
+            if (id != null) {
+                // SÍ ESTÁ DECLARADA: Usamos el tipo que tiene registrado
+                return convertirStringAInt(id.tipo);
+            } else {
+                // NO ESTÁ DECLARADA: ¡Se activa la trampa del Variant!
+                return VAR; 
+            }
         }
-        
-        // 2. Si tu método regresó "", significa que NO es un literal, es una VARIABLE.
-        String lexema = (String) token[1];
-        Identificador id = buscarEnTabla(lexema);
-        
-        if (id != null) {
-            // SÍ ESTÁ DECLARADA: Convertimos el tipo que tenga en la tabla a su índice.
-            // Asumiendo que id.tipo guarda "Dec", "Cadena", etc.
-            return convertirStringAInt(id.tipo);
-        } else {
-            // NO ESTÁ DECLARADA: ¡Se activa la trampa del Variant!
-            return VAR; 
+        else {
+            // 2. Si NO es un ID, entonces obligatoriamente es una CONSTANTE (ej. 35, "Hola")
+            // Como es constante, no necesita estar en la tabla, confiamos en getTipo.
+            String tipoConstante = getTipo(token);
+            if (!tipoConstante.isEmpty()) {
+                // Es una constante (ej. token -62). Lo convertimos al índice de la matriz.
+                return convertirStringAInt(tipoConstante);
+            }
+            return convertirStringAInt(tipoConstante);
         }
+    }
+    private boolean esUnIdentificador(int numToken){
+        return (numToken <= -60 && numToken >= -67);
     }
     private int convertirStringAInt(String tipoStr) {
         if (tipoStr == null) return VAR;
@@ -1837,22 +1889,24 @@ public class AnalizadorPrincipal extends JFrame {
             
             return REL[tipo1][tipo2];
         }
-            
+        //TODO CHECAR SI LOGICOS TAMBIEN REGRESAN SIEMPRE BOOLEANOS
+
         // if (operador.equals("&&") || operador.equals("||") || operador.equals("&") || operador.equals("|")) {
         //     if (tipo1 == VAR || tipo2 == VAR) return BOOL; 
         //     return LOG[tipo1][tipo2];
         // }
+
         // ¡NUEVA REGLA DEL VARIANT APLICADA!
         // Si ambos son Variant, se queda como Variant
         if (tipo1 == VAR && tipo2 == VAR) return VAR;
         // Si uno es Variant, asume la identidad del otro tipo
         if (tipo1 == VAR) return tipo2;
         if (tipo2 == VAR) return tipo1;
-
+        //TODO CHECAR DONDE VA ^
         // Búsqueda normal en el Cubo Semántico
         if (operador.equals("+") || operador.equals("+=")) return SUMA[tipo1][tipo2];
         if (operador.equals("-") || operador.equals("-=")) return RESTA[tipo1][tipo2];
-        if (operador.equals("*") || operador.equals("*=") || operador.equals("%")) return MULT[tipo1][tipo2];
+        if (operador.equals("*") || operador.equals("*=") || operador.equals("%") ) return MULT[tipo1][tipo2];
         if (operador.equals("/") || operador.equals("/=")) return DIV[tipo1][tipo2];
         
         if (operador.equals("<") || operador.equals("<=") || operador.equals(">") || 
@@ -1864,8 +1918,11 @@ public class AnalizadorPrincipal extends JFrame {
     }
 
     private Identificador buscarEnTabla(String lexemaActual) {
+        System.out.println("Buscando: " + lexemaActual);
         for (Map<String, Identificador> ambito : pilaIdentificadores) {
+            //System.out.println(ambito);
             if (ambito.containsKey(lexemaActual)) {
+                System.out.println("encontre a : " + lexemaActual);
                 return ambito.get(lexemaActual); // Found it! Return the Identifier object.
             }
         }
@@ -2227,7 +2284,8 @@ private void llenarDatosHoja(Sheet hoja, List<Object[]> datos) {
                     // ==========================================
                     // LÓGICA RECURSIVA PURA
                     // ==========================================
-                    generarCuadruplosRecursivo(operacion, out);
+
+                    //generarCuadruplosRecursivo(operacion, out);
                     
                     out.println(); // Salto de línea para separar la siguiente ecuación
                 }
