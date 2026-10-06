@@ -36,6 +36,7 @@ public class AnalizadorPrincipal extends JFrame {
     private ArrayList<Object[]> listaErrores = new ArrayList<>();
     private ArrayList<Object[]> listaErroresSintactico = new ArrayList<>();
     private ArrayList<Object[]> listaErroresSemantico = new ArrayList<>();
+    private ArrayList<Object[]> listaErroresSemantico1 = new ArrayList<>();
     // Variables ambito
     private ArrayList<Object[]> ListaCambiosDeclaracion = new ArrayList<>();
     private ArrayList<Object[]> ListaCambiosAmbito = new ArrayList<>();
@@ -52,6 +53,7 @@ public class AnalizadorPrincipal extends JFrame {
     int lineaOperacionActual = 0;
     public List<String> registroOperaciones = new ArrayList<>();
     public List<List<Object[]>> operacionesPrefijasTokens = new ArrayList<>();
+    public List<Object[]> listaResumenOperaciones = new ArrayList<>();
 
     Object[] tokenIzquierdo = null;
     Object[] tokenAsignacion = null;
@@ -1097,6 +1099,9 @@ public class AnalizadorPrincipal extends JFrame {
         for (Object[] tokenErrorSemantico : listaErroresSemantico) {
             errorTableModel.addRow(tokenErrorSemantico);
         }
+        for (Object[] tokenErrorSemantico1 : listaErroresSemantico1) {
+            errorTableModel.addRow(tokenErrorSemantico1);
+        }
     }
 
 
@@ -1288,6 +1293,7 @@ public class AnalizadorPrincipal extends JFrame {
         contadorNoTerminales.clear();
         listaErroresSintactico.clear();
         listaErroresSemantico.clear();
+        listaErroresSemantico1.clear();
         //AMBITO
         ListaCambiosDeclaracion.clear();
         pilaContadorAmbito.clear();
@@ -1305,6 +1311,8 @@ public class AnalizadorPrincipal extends JFrame {
         registroIdentificadores.clear();
         registroOperaciones.clear();
         operacionesPrefijasTokens.clear();
+        listaResumenOperaciones.clear();
+        contadoresTemporales = new int[9];
         if (!listaTokens.isEmpty() && listaTokens.get(listaTokens.size()-1)[1].equals("$")) {
             listaTokens.remove(listaTokens.size()-1);
         }
@@ -1449,7 +1457,8 @@ public class AnalizadorPrincipal extends JFrame {
                 // Creamos las listas completas (Izquierda + Derecha)
                 List<Object[]> infijaCompleta = new ArrayList<>();
                 List<Object[]> prefijaCompleta = new ArrayList<>();
-                
+                String idIzquierdoStr = (tokenIzquierdo != null) ? (String) tokenIzquierdo[1] : "";
+
                 // Si la operación provino de una asignación (ej. x = 5), agregamos el lado izquierdo
                 if (tokenIzquierdo != null && tokenAsignacion != null) {
                     // Armar Infija completa: [id] [=] [a] [+] [b]
@@ -1474,7 +1483,46 @@ public class AnalizadorPrincipal extends JFrame {
                 operacionesPrefijasTokens.add(prefijaCompleta);
 
                 indiceGlobalPrefijo = 0; // <-- CRÍTICO: Reiniciar el contador
+
+                int indexInicioCuadruplos = listaCuadruplos.size(); // Contamos cuántos hay antes
+                // 1. Guardamos el estado exacto de los contadores ANTES de la línea
+                int[] contadoresAntes = contadoresTemporales.clone();
                 generarCuadruplosRecursivo(prefijaCompleta);
+
+                // INICIO DE CAPTURA PARA EXCEL
+                // ========================================================
+                
+                String ultimoTemporal = "";
+                // Obtenemos directamente el último cuádruplo generado para sacar su temporal
+                if (listaCuadruplos.size() > indexInicioCuadruplos) {
+                    String[] ultimoCuad = listaCuadruplos.get(listaCuadruplos.size() - 1);
+                    if (ultimoCuad.length > 3 && ultimoCuad[3] != null && ultimoCuad[3].startsWith("T")) {
+                        ultimoTemporal = ultimoCuad[3];
+                    }
+                }
+
+                String asignacionFinal = "-";
+                if (!idIzquierdoStr.isEmpty() && !ultimoTemporal.isEmpty()) {
+                    asignacionFinal = idIzquierdoStr + " = " + ultimoTemporal;
+                } else if (!idIzquierdoStr.isEmpty()) {
+                    asignacionFinal = idIzquierdoStr + " = (Valor directo)";
+                } else if (!ultimoTemporal.isEmpty()) {
+                    asignacionFinal = "Eval -> " + ultimoTemporal;
+                }
+
+                // 3. Calculamos la diferencia: cuántos se hicieron SOLAMENTE en esta línea
+                int[] contadoresSoloEstaLinea = new int[9];
+                for (int j = 0; j < 9; j++) {
+                    contadoresSoloEstaLinea[j] = contadoresTemporales[j] - contadoresAntes[j];
+                }
+
+                // Guardamos: [Linea, ArregloContadores, AsignacionFinal]
+                listaResumenOperaciones.add(new Object[]{lineaOperacionActual, contadoresSoloEstaLinea, asignacionFinal});
+                // ========================================================
+                // FIN DE CAPTURA PARA EXCEL
+                // ========================================================
+
+
 
                 StringBuilder textoInfijo = new StringBuilder();
                 for (Object[] token : infijaCompleta) {
@@ -1545,8 +1593,9 @@ public class AnalizadorPrincipal extends JFrame {
                                     nuevoId.tamañoPar = funcionActual.id;
                                 }
                             }
-                            if (claseActual.equals("VAR")){
+                            if (claseActual.equals("VAR") || (claseActual.equals("REG") && !esDefinicionRegistro)){
                                 arregloActual = nuevoId;
+                                System.out.println(lexemaActual);
                                 
                             }
                             ambitoLocal.put(lexemaActual, nuevoId);
@@ -1773,7 +1822,7 @@ public class AnalizadorPrincipal extends JFrame {
                 String descripcion = "Incompatibilidad de tipos: no se puede aplicar '" + lexemaActual + 
                                 "' entre " + NOMBRES[tipo1] + " y " + NOMBRES[tipo2];
                 Object[] datosError = {544, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico", tokenActual[2]};
-                listaErroresSemantico.add(datosError);
+                listaErroresSemantico1.add(datosError);
                 
                 // Guardas el error en tu lista global para imprimirlo en tu tabla/Excel
                 // Object[] error = { ... }; 
@@ -1812,7 +1861,7 @@ public class AnalizadorPrincipal extends JFrame {
                 String descripcion = "Incompatibilidad de tipos: no se puede asignar '" + lexemaActual + 
                                 "' entre " + NOMBRES[tipoDestino] + " y " + NOMBRES[tipoValor];
                 Object[] datosError = {544, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico", tokenActual[2]};
-                listaErroresSemantico.add(datosError);
+                listaErroresSemantico1.add(datosError);
             }
 
             System.out.println(lexemaActual + "," + nodoIzq[0] + "," + nodoDer[0]);
@@ -1990,6 +2039,9 @@ public class AnalizadorPrincipal extends JFrame {
             }
             if (listaErroresSemantico != null) {
                 erroresUnificados.addAll(listaErroresSemantico);
+            }
+            if (listaErroresSemantico1 != null) {
+                erroresUnificados.addAll(listaErroresSemantico1);
             }
             // Mandamos la lista unificada a la hoja
             llenarDatosHoja(hojaErrores, erroresUnificados);
@@ -2203,6 +2255,54 @@ public class AnalizadorPrincipal extends JFrame {
             }
 
             for (int i = 0; i < cabeceraSimbolos.length; i++) hojaSimbolos.autoSizeColumn(i);
+            // =========================================================================
+            // =========================================================================
+            // 7. NUEVA HOJA: RESUMEN DE LÍNEAS (Temporales, Asignación y Errores)
+            // =========================================================================
+            Sheet hojaResumen = workbook.createSheet("Semantica 1");
+            // Cabecera mapeada a tus constantes: BIN(0), DEC(1), OCT(2), HEX(3), REAL(4), EXP(5), CAD(6), BOOL(7), VAR(8)
+            String[] cabeceraResumen = {"Línea", "TBin", "TDec", "TOct", "THex", "TReal", "TExp", "TCad", "TBool", "TVar", "Asignación Final", "Errores Semánticos"};
+            crearFilaCabecera(hojaResumen, cabeceraResumen, estiloCabecera);
+
+            // a) Agrupar errores semánticos por número de línea
+            Map<Integer, Integer> erroresPorLinea = new HashMap<>();
+            if (listaErroresSemantico1 != null) {
+                for (Object[] error : listaErroresSemantico1) {
+                    if (error.length > 4 && error[4] instanceof Integer) {
+                        int linea = (Integer) error[4];
+                        erroresPorLinea.put(linea, erroresPorLinea.getOrDefault(linea, 0) + 1);
+                    }
+                }
+            }
+
+            int filaResumenIndex = 1;
+            
+            // b) Escribir las filas basadas en las operaciones procesadas
+            for (Object[] resumen : listaResumenOperaciones) {
+                Row fila = hojaResumen.createRow(filaResumenIndex++);
+                
+                int linea = (Integer) resumen[0];
+                int[] contadores = (int[]) resumen[1];
+                String asignacion = (String) resumen[2];
+                int numErrores = erroresPorLinea.getOrDefault(linea, 0);
+
+                fila.createCell(0).setCellValue(linea);
+                
+                // Vaciamos los 9 contadores en sus respectivas celdas (Columnas 1 a la 9)
+                for (int j = 0; j < 9; j++) {
+                    fila.createCell(j + 1).setCellValue(contadores[j]);
+                }
+                
+                fila.createCell(10).setCellValue(asignacion != null ? asignacion : "-");
+                fila.createCell(11).setCellValue(numErrores);
+                
+                erroresPorLinea.remove(linea); // Marcamos como procesada
+            }
+
+            // Auto-ajustar columnas
+            for (int i = 0; i < cabeceraResumen.length; i++) {
+                hojaResumen.autoSizeColumn(i);
+            }
             // =========================================================================
 
             try (FileOutputStream out = new FileOutputStream(archivo)) {
