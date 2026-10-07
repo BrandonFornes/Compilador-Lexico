@@ -1567,6 +1567,7 @@ public class AnalizadorPrincipal extends JFrame {
             if (tope.equals(terminalActual)){
 
                 if (leyendoOperacion) {
+                    
                     expresionActual.add(tokenActual);
                 } else {
                     if (terminalActual.equals("id")) {
@@ -1715,21 +1716,45 @@ public class AnalizadorPrincipal extends JFrame {
      }
 
         private int obtenerPrecedencia(String op) {
-        switch (op) {
-            case "||": return 1;
-            case "&&": return 2;
-            case "==": case "!=": return 3;
-            case "<": case "<=": case ">": case ">=": return 4;
-            case "+": case "-": return 5;
-            case "*": case "/": case "%": return 6;
-            case "^": return 7;
+         switch (op) {
+            case "|": 
+                return 1;
+            case "||": 
+                return 2;
+            case "&&": 
+            case "&": 
+                return 3;   // Ambos AND tienen la misma prioridad aquí
+            case "<": 
+            case ">": 
+            case "<=": 
+            case ">=": 
+            case "==": 
+            case "!=": 
+                return 4;   // Todos los relacionales y de igualdad juntos
+            case "<<": 
+            case ">>": 
+            case ">>>": 
+                return 5;
+            case "+": 
+            case "-": 
+                return 6;
+            case "#": 
+                return 7;   // El XOR a nivel de bits va antes de la suma
+            case "*": 
+            case "/": 
+            case "%": 
+                return 8;
+            case "^": 
+                return 9;   // Potencia sigue siendo el rey
+            default: 
+                return -1;
         }
-        return -1;
     }
     private boolean esOperadorBinario(String op) {
         return op.equals("+") || op.equals("-") || op.equals("*") || op.equals("/") || op.equals("%") || op.equals("^") ||
-            op.equals("<") || op.equals("<=") || op.equals(">") || op.equals(">=") || op.equals("==") || op.equals("!=") ||
-            op.equals("&&") || op.equals("||") || op.equals("&") || op.equals("|");
+               op.equals("<") || op.equals("<=") || op.equals(">") || op.equals(">=") || op.equals("==") || op.equals("!=") ||
+               op.equals("&&") || op.equals("||") || op.equals("&") || op.equals("|") ||
+               op.equals("<<") || op.equals(">>") || op.equals(">>>") || op.equals("#");
     }
 
     private boolean esAsignacion(String op) {
@@ -1790,6 +1815,28 @@ public class AnalizadorPrincipal extends JFrame {
 
         // 3. Invertir el resultado final
         Collections.reverse(prefijaInvertida);
+        // =========================================================
+        // NUEVO: IMPRIMIR EL PREFIJO EN CONSOLA
+        // =========================================================
+        if (!prefijaInvertida.isEmpty()) {
+            StringBuilder cadenaPrefijo = new StringBuilder();
+            int lineaOperacion = -1;
+
+            for (Object[] token : prefijaInvertida) {
+                // Concatenamos el lexema con un espacio
+                cadenaPrefijo.append((String) token[1]).append(" ");
+                
+                // Extraemos la línea del primer token disponible
+                if (lineaOperacion == -1 && token.length > 2) {
+                    // Asumimos que el índice 2 guarda la línea entera, según tus códigos anteriores
+                    lineaOperacion = (int) token[2]; 
+                }
+            }
+            
+            // Imprimimos imitando el formato del archivo de prueba
+            System.out.println("Línea -> " + lineaOperacion + " PREFIJO: " + cadenaPrefijo.toString().trim());
+        }
+        // =========================================================
         return prefijaInvertida;
     }
     public void ejecutarCompilacionCuadruplos() {
@@ -1882,6 +1929,7 @@ public class AnalizadorPrincipal extends JFrame {
                 Object[] datosError = {544, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico", tokenActual[2]};
                 listaErroresSemantico1.add(datosError);
             }
+            
 
             System.out.println(lexemaActual + "," + nodoIzq[0] + "," + nodoDer[0]);
             return nodoIzq;
