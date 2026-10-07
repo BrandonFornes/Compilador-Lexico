@@ -2016,7 +2016,7 @@ public class AnalizadorPrincipal extends JFrame {
         JFileChooser fc = new JFileChooser();
         fc.setDialogTitle("Exportar Resultados a Excel");
         fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivo de Excel (*.xlsx)", "xlsx"));
-        fc.setSelectedFile(new File("Ambito-BrandonFornesRubio-1.xlsx"));
+        fc.setSelectedFile(new File("Semantica1-BrandonFornesRubio.xlsx"));
         if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
                 File archivo = fc.getSelectedFile();
                 if (!archivo.getName().toLowerCase().endsWith(".xlsx")) {
