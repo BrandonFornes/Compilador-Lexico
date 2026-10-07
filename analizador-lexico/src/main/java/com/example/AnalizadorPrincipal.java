@@ -80,58 +80,77 @@ public class AnalizadorPrincipal extends JFrame {
         "TBI", "TD", "TO", "TH", "TR", "TE", "TC", "TB", "TV"
     };
 
-    private static final int[][] SUMA = {
-        { BIN, E, E, E, E, E, CAD, E },
-        { E, DEC, E, E, REAL, EXP, CAD, E },
-        { E, E, OCT, E, E, E, CAD, E },
-        { E, E, E, HEX, E, E, CAD, E },
-        { E, REAL, E, E, REAL, EXP, CAD, E },
-        { E, EXP, E, E, EXP, EXP, CAD, E },
-        { CAD, CAD, CAD, CAD, CAD, CAD, CAD, CAD },
-        { E, E, E, E, E, E, CAD, CAD }
+     private static final int[][] SUMA = {
+        { BIN, E, E, E, E, E, CAD, E, BIN },
+        { E, DEC, E, E, REAL, EXP, CAD, E, DEC },
+        { E, E, OCT, E, E, E, CAD, E, OCT },
+        { E, E, E, HEX, E, E, CAD, E, HEX },
+        { E, REAL, E, E, REAL, EXP, CAD, E, REAL },
+        { E, EXP, E, E, EXP, EXP, CAD, E, EXP },
+        { CAD, CAD, CAD, CAD, CAD, CAD, CAD, CAD, CAD },
+        { E, E, E, E, E, E, CAD, E, E },
+        { BIN, DEC, OCT, HEX, REAL, EXP, CAD, E, VAR }
     };
     private static final int[][] RESTA = {
-        { BIN, E, E, E, E, E, E, E },
-        { E, DEC, E, E, REAL, EXP, E, E },
-        { E, E, OCT, E, E, E, E, E },
-        { E, E, E, HEX, E, E, E, E },
-        { E, REAL, E, E, REAL, EXP, E, E },
-        { E, EXP, E, E, EXP, EXP, E, E },
-        { E, E, E, E, E, E, E, E },
-        { E, E, E, E, E, E, E, E }
+        { BIN, E, E, E, E, E, E, E, BIN },
+        { E, DEC, E, E, REAL, EXP, E, E, DEC },
+        { E, E, OCT, E, E, E, E, E, OCT },
+        { E, E, E, HEX, E, E, E, E, HEX },
+        { E, REAL, E, E, REAL, EXP, E, E, REAL },
+        { E, EXP, E, E, EXP, EXP, E, E, EXP },
+        { E, E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E, E },
+        { BIN, DEC, OCT, HEX, REAL, EXP, E, E, VAR }
     };
     private static final int[][] MULT = RESTA;
-    
     private static final int[][] DIV = {
-        { BIN, E, E, E, E, E, E, E },
-        { E, REAL, E, E, REAL, EXP, E, E },
-        { E, E, OCT, E, E, E, E, E },
-        { E, E, E, HEX, E, E, E, E },
-        { E, REAL, E, E, EXP, EXP, E, E },
-        { E, EXP, E, E, EXP, EXP, E, E },
-        { E, E, E, E, E, E, E, E },
-        { E, E, E, E, E, E, E, E }
+        // BIN, DEC,  OCT,  HEX,  REAL, EXP,  CAD, BOOL, VAR
+        { BIN,  E,    E,    E,    E,    E,    E,   E,    BIN  }, // Bin
+        { E,    REAL, E,    E,    REAL, EXP,  E,   E,    REAL }, // Dec
+        { E,    E,    OCT,  E,    E,    E,    E,   E,    OCT  }, // Oct
+        { E,    E,    E,    HEX,  E,    E,    E,   E,    HEX  }, // Hex
+        { E,    REAL, E,    E,    EXP,  EXP,  E,   E,    EXP  }, // Real
+        { E,    EXP,  E,    E,    EXP,  EXP,  E,   E,    EXP  }, // Exp
+        { E,    E,    E,    E,    E,    E,    E,   E,    E    }, // Cadena
+        { E,    E,    E,    E,    E,    E,    E,   E,    E    }, // Boolean
+        { BIN,  REAL, OCT,  HEX,  EXP,  EXP,  E,   E,    VAR  }  // Variant
     };
     private static final int[][] REL = {
-        { BOOL, E, E, E, E, E, E, E },
-        { E, BOOL, E, E, BOOL, BOOL, E, E },
-        { E, E, BOOL, E, E, E, E, E },
-        { E, E, E, BOOL, E, E, E, E },
-        { E, BOOL, E, E, BOOL, BOOL, E, E },
-        { E, BOOL, E, E, BOOL, BOOL, E, E },
-        { E, E, E, E, E, E, E, E },
-        { E, E, E, E, E, E, E, E }
+        // BIN, DEC,  OCT,  HEX,  REAL, EXP,  CAD, BOOL, VAR
+        { BOOL, E,    E,    E,    E,    E,    E,   E,    BOOL }, // Bin
+        { E,    BOOL, E,    E,    BOOL, BOOL, E,   E,    BOOL }, // Dec
+        { E,    E,    BOOL, E,    E,    E,    E,   E,    BOOL }, // Oct
+        { E,    E,    E,    BOOL, E,    E,    E,   E,    BOOL }, // Hex
+        { E,    BOOL, E,    E,    BOOL, BOOL, E,   E,    BOOL }, // Real
+        { E,    BOOL, E,    E,    BOOL, BOOL, E,   E,    BOOL }, // Exp
+        { E,    E,    E,    E,    E,    E,    E,   E,    BOOL }, // Cadena
+        { E,    E,    E,    E,    E,    E,    E,   E,    E    }, // Boolean
+        { BOOL, BOOL, BOOL, BOOL, BOOL, BOOL, BOOL,E,    BOOL }  // Variant
     };
     private static final int[][] LOG = {
-        { E, E, E, E, E, E, E, E },
-        { E, E, E, E, E, E, E, E },
-        { E, E, E, E, E, E, E, E },
-        { E, E, E, E, E, E, E, E },
-        { E, E, E, E, E, E, E, E },
-        { E, E, E, E, E, E, E, E },
-        { E, E, E, E, E, E, E, E },
-        { E, E, E, E, E, E, E, BOOL }
+        { E, E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, BOOL, BOOL },
+        { E, E, E, E, E, E, E, BOOL, VAR }
     };
+
+     private static final int[][] POT = {
+        { E, BIN, E, E, E, E, E, E, BIN },
+        { E, DEC, E, E, E, E, E, E, REAL },
+        { E, OCT, E, E, E, E, E, E, OCT },
+        { E, HEX, E, E, E, E, E, E, HEX },
+        { E, REAL, E, E, E, E, E, E, EXP },
+        { E, EXP, E, E, E, E, E, E, EXP },
+        { E, E, E, E, E, E, E, E, E },
+        { E, E, E, E, E, E, E, E, E },
+        { E, VAR, E, E, E, E, E, E, VAR }
+    };
+
 
     private static String[][] matriz;
     private static String[][] matrizSintactica;
@@ -893,8 +912,8 @@ public class AnalizadorPrincipal extends JFrame {
         // JButton btntxtAvance1Semantica = new JButton("Crear txt Avance 1 Semantica");
         // btntxtAvance1Semantica.addActionListener(e -> ExportarOperacionesTXT());
 
-        JButton btntxtAvance2Semantica = new JButton("Crear txt Avance 2 Semantica");
-        btntxtAvance2Semantica.addActionListener(e -> ExportarCuadruplosTXT());
+        // JButton btntxtAvance2Semantica = new JButton("Crear txt Avance 2 Semantica");
+        // btntxtAvance2Semantica.addActionListener(e -> ExportarCuadruplosTXT());
 
         fileNameLabel = new JLabel(" Sin archivo ");
         fileNameLabel.setForeground(TEXT_MAIN);
@@ -905,7 +924,7 @@ public class AnalizadorPrincipal extends JFrame {
         //bar.add(btntxtAvance1);
         //bar.add(btntxtAvance2);
         //bar.add(btntxtAvance1Semantica);
-        bar.add(btntxtAvance2Semantica);
+        // bar.add(btntxtAvance2Semantica);
         bar.add(fileNameLabel);
         
         return bar;
@@ -1929,49 +1948,41 @@ public class AnalizadorPrincipal extends JFrame {
     }
 
     private int evaluarOperacion(int tipo1, int tipo2, String operador) {
-        // 1. PRIMERO: Los operadores que siempre devuelven BOOLEANOS
-        if (operador.equals("<") || operador.equals("<=") || operador.equals(">") || 
-            operador.equals(">=") || operador.equals("==") || operador.equals("!=")) {
-            
-            // Si uno es Variant, perdonamos el error, pero forzamos a que el resultado sea BOOL
-            if (tipo1 == VAR || tipo2 == VAR) return BOOL; 
-            
-            return REL[tipo1][tipo2];
-        }
-        //TODO CHECAR SI LOGICOS TAMBIEN REGRESAN SIEMPRE BOOLEANOS
+       // La lógica del tipo VAR (índice 8) ya está mapeada automáticamente 
+        // dentro de los arreglos bidimensionales, no se requieren 'if' extra.
 
-        // if (operador.equals("&&") || operador.equals("||") || operador.equals("&") || operador.equals("|")) {
-        //     if (tipo1 == VAR || tipo2 == VAR) return BOOL; 
-        //     return LOG[tipo1][tipo2];
-        // }
-
-        // ¡NUEVA REGLA DEL VARIANT APLICADA!
-        // Si ambos son Variant, se queda como Variant
-        if (tipo1 == VAR && tipo2 == VAR) return VAR;
-        // Si uno es Variant, asume la identidad del otro tipo
-        if (tipo1 == VAR) return tipo2;
-        if (tipo2 == VAR) return tipo1;
-        //TODO CHECAR DONDE VA ^
-        // Búsqueda normal en el Cubo Semántico
         if (operador.equals("+") || operador.equals("+=")) return SUMA[tipo1][tipo2];
         if (operador.equals("-") || operador.equals("-=")) return RESTA[tipo1][tipo2];
-        if (operador.equals("*") || operador.equals("*=") || operador.equals("%") ) return MULT[tipo1][tipo2];
+        if (operador.equals("*") || operador.equals("*=")) return MULT[tipo1][tipo2];
         if (operador.equals("/") || operador.equals("/=")) return DIV[tipo1][tipo2];
-        
-        if (operador.equals("<") || operador.equals("<=") || operador.equals(">") || 
-            operador.equals(">=") || operador.equals("==") || operador.equals("!=")) return REL[tipo1][tipo2];
+        //POT
+        if (operador.equals("%") || operador.equals(">>>") || operador.equals(">>") || operador.equals("<<") || operador.equals("^")) return POT[tipo1][tipo2];
+        // Operadores Relacionales de Magnitud
+        if (operador.equals("<") || operador.equals("<=") || operador.equals(">") || operador.equals(">=")) {
+            return REL[tipo1][tipo2];
+        }
+        // Operadores de Igualdad y Desigualdad
+        if (operador.equals("==") || operador.equals("!=")) {
+            // Excepciones donde '==' y '!=' SÍ son válidos (según la segunda hoja de Excel):
+            if (tipo1 == CAD && tipo2 == CAD) return BOOL;   // Cadena == Cadena
+            if (tipo1 == BOOL && tipo2 == BOOL) return BOOL; // Boolean == Boolean
+            if (tipo1 == VAR && tipo2 == BOOL) return BOOL;  // Variant == Boolean
+            if (tipo1 == BOOL && tipo2 == VAR) return BOOL;  // Boolean == Variant
             
-        if (operador.equals("&&") || operador.equals("||") || operador.equals("&") || operador.equals("|")) return LOG[tipo1][tipo2];
+            // Para cualquier otro caso, se comportan igual que la matriz REL base
+            return REL[tipo1][tipo2];
+        }
+        // Operadores Lógicos
+        if (operador.equals("&&") || operador.equals("||") || operador.equals("&") || operador.equals("|") || operador.equals("#")) {
+            return LOG[tipo1][tipo2];
+        }
 
-        return E; // Retorna Error si hay incompatibilidad
+        return E; // Retorna Error si el operador no existe o hay un fallo inesperado
     }
 
     private Identificador buscarEnTabla(String lexemaActual) {
-        System.out.println("Buscando: " + lexemaActual);
         for (Map<String, Identificador> ambito : pilaIdentificadores) {
-            //System.out.println(ambito);
             if (ambito.containsKey(lexemaActual)) {
-                System.out.println("encontre a : " + lexemaActual);
                 return ambito.get(lexemaActual); // Found it! Return the Identifier object.
             }
         }
@@ -2276,7 +2287,11 @@ public class AnalizadorPrincipal extends JFrame {
             }
 
             int filaResumenIndex = 1;
-            
+            // --- VARIABLES PARA LA SUMATORIA FINAL ---
+            int[] totalesTemporales = new int[9];
+            int totalAsignaciones = 0;
+            int granTotalErrores = 0;
+
             // b) Escribir las filas basadas en las operaciones procesadas
             for (Object[] resumen : listaResumenOperaciones) {
                 Row fila = hojaResumen.createRow(filaResumenIndex++);
@@ -2291,12 +2306,39 @@ public class AnalizadorPrincipal extends JFrame {
                 // Vaciamos los 9 contadores en sus respectivas celdas (Columnas 1 a la 9)
                 for (int j = 0; j < 9; j++) {
                     fila.createCell(j + 1).setCellValue(contadores[j]);
+                    totalesTemporales[j] += contadores[j];
                 }
                 
                 fila.createCell(10).setCellValue(asignacion != null ? asignacion : "-");
+                // Si hubo una asignación real, sumamos 1 al contador de asignaciones
+                if (asignacion != null && !asignacion.equals("-")) {
+                    totalAsignaciones++;
+                }
                 fila.createCell(11).setCellValue(numErrores);
-                
+                granTotalErrores += numErrores; // Sumamos errores
+
                 erroresPorLinea.remove(linea); // Marcamos como procesada
+                
+            }
+            // d) --- CREAR LA FILA DE TOTALES ---
+            Row filaTotales = hojaResumen.createRow(filaResumenIndex++);
+            filaTotales.createCell(0).setCellValue("Totales");
+            
+            // Imprimir la sumatoria de cada tipo de temporal
+            for (int j = 0; j < 9; j++) {
+                filaTotales.createCell(j + 1).setCellValue(totalesTemporales[j]);
+            }
+            
+            // Imprimir el total de asignaciones y el total general de errores
+            filaTotales.createCell(10).setCellValue(totalAsignaciones);
+            filaTotales.createCell(11).setCellValue(granTotalErrores);
+
+            // Aplicarle negritas (estiloCabecera) a toda la fila para que resalte
+            for (int k = 0; k <= 11; k++) {
+                Cell celda = filaTotales.getCell(k);
+                if (celda != null) {
+                    celda.setCellStyle(estiloCabecera);
+                }
             }
 
             // Auto-ajustar columnas
@@ -2343,62 +2385,62 @@ private void llenarDatosHoja(Sheet hoja, List<Object[]> datos) {
     }
 }
     
-    private void ExportarCuadruplosTXT() {
-        JFileChooser fc = new JFileChooser();
-        fc.setDialogTitle("Exportar Cuádruplos a TXT");
-        fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
-        fc.setSelectedFile(new File("Semantica-Avance 2-BrandonFornes")); 
+    // private void ExportarCuadruplosTXT() {
+    //     JFileChooser fc = new JFileChooser();
+    //     fc.setDialogTitle("Exportar Cuádruplos a TXT");
+    //     fc.setFileFilter(new FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
+    //     fc.setSelectedFile(new File("Semantica-Avance 2-BrandonFornes")); 
 
-        if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File archivo = fc.getSelectedFile();
-            if (!archivo.getName().toLowerCase().endsWith(".txt")) {
-                archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
-            }
+    //     if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+    //         File archivo = fc.getSelectedFile();
+    //         if (!archivo.getName().toLowerCase().endsWith(".txt")) {
+    //             archivo = new File(archivo.getParentFile(), archivo.getName() + ".txt");
+    //         }
 
-            try (FileWriter fw = new FileWriter(archivo);
-                BufferedWriter bw = new BufferedWriter(fw);
-                PrintWriter out = new PrintWriter(bw)) {
+    //         try (FileWriter fw = new FileWriter(archivo);
+    //             BufferedWriter bw = new BufferedWriter(fw);
+    //             PrintWriter out = new PrintWriter(bw)) {
                 
-                int lineaAnterior = -1;
+    //             int lineaAnterior = -1;
 
-                for (int i = 0; i < contadoresTemporales.length; i++) {
-                    contadoresTemporales[i] = 0;
-                }
-                for (List<Object[]> operacion : operacionesPrefijasTokens) {
+    //             for (int i = 0; i < contadoresTemporales.length; i++) {
+    //                 contadoresTemporales[i] = 0;
+    //             }
+    //             for (List<Object[]> operacion : operacionesPrefijasTokens) {
                     
-                    int lineaActual = (int) operacion.get(0)[2];
+    //                 int lineaActual = (int) operacion.get(0)[2];
                     
-                    // Imprimir el encabezado solo una vez por línea
-                    if (lineaActual != lineaAnterior) {
-                        StringBuilder prefijoStr = new StringBuilder();
-                        for (Object[] token : operacion) {
-                            prefijoStr.append(token[1]).append(" ");
-                        }
-                        out.println("Línea: " + lineaActual + " | " + prefijoStr.toString().trim());
-                        lineaAnterior = lineaActual; 
-                    }
+    //                 // Imprimir el encabezado solo una vez por línea
+    //                 if (lineaActual != lineaAnterior) {
+    //                     StringBuilder prefijoStr = new StringBuilder();
+    //                     for (Object[] token : operacion) {
+    //                         prefijoStr.append(token[1]).append(" ");
+    //                     }
+    //                     out.println("Línea: " + lineaActual + " | " + prefijoStr.toString().trim());
+    //                     lineaAnterior = lineaActual; 
+    //                 }
 
-                    // Reiniciamos el índice apuntador para empezar a leer esta línea desde el 0
-                    indiceGlobalPrefijo = 0; 
+    //                 // Reiniciamos el índice apuntador para empezar a leer esta línea desde el 0
+    //                 indiceGlobalPrefijo = 0; 
                     
-                    // ==========================================
-                    // LÓGICA RECURSIVA PURA
-                    // ==========================================
+    //                 // ==========================================
+    //                 // LÓGICA RECURSIVA PURA
+    //                 // ==========================================
 
-                    //generarCuadruplosRecursivo(operacion, out);
+    //                 //generarCuadruplosRecursivo(operacion, out);
                     
-                    out.println(); // Salto de línea para separar la siguiente ecuación
-                }
+    //                 out.println(); // Salto de línea para separar la siguiente ecuación
+    //             }
 
-                JOptionPane.showMessageDialog(this, "Exportado correctamente.", 
-                    "Exportación Exitosa", JOptionPane.INFORMATION_MESSAGE);
+    //             JOptionPane.showMessageDialog(this, "Exportado correctamente.", 
+    //                 "Exportación Exitosa", JOptionPane.INFORMATION_MESSAGE);
 
-            } catch (IOException e) {
-                JOptionPane.showMessageDialog(this, "Error al guardar el archivo:\n" + e.getMessage(), 
-                    "Error", JOptionPane.ERROR_MESSAGE);
-            }
-        }
-    }
+    //         } catch (IOException e) {
+    //             JOptionPane.showMessageDialog(this, "Error al guardar el archivo:\n" + e.getMessage(), 
+    //                 "Error", JOptionPane.ERROR_MESSAGE);
+    //         }
+    //     }
+    // }
 
     public static void main(String[] args) {
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) {}
