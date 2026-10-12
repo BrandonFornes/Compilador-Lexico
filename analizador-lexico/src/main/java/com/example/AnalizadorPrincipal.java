@@ -49,6 +49,7 @@ public class AnalizadorPrincipal extends JFrame {
     
     //Variables SEMANTICA
     boolean leyendoOperacion = false;
+    boolean ignorarParaExcel = false;
     List<Object[]> expresionActual = new ArrayList<>();
     int lineaOperacionActual = 0;
     public List<String> registroOperaciones = new ArrayList<>();
@@ -263,7 +264,7 @@ public class AnalizadorPrincipal extends JFrame {
         {"while", "(", "OR", ")", "STATU"},
         {"do", "STATU", "while", "(", "OR", ")"},
         {"return", "OR"},
-        {"for", "(","802","801", "OR", "B3", ")", "STATU","803"},
+        {"for","816", "(","802","801", "OR", "B3", ")","817", "STATU","803"},
         {",", "OR", "B3"},
         {":","800", "OR"},
         {";","800", "STATU", ";", "OR", "B1"},
@@ -1325,6 +1326,7 @@ public class AnalizadorPrincipal extends JFrame {
         boolean esTipoRegistro = false;
         boolean esDefinicionRegistro = false;
         String tipoPersonalizado = "";
+        String valorDerechoStr = "";
         pilaIdentificadores.clear();
         pilaIdentificadores.push(new HashMap<>());
         registroIdentificadores.clear();
@@ -1419,6 +1421,22 @@ public class AnalizadorPrincipal extends JFrame {
             if (tope.equals("815")){
                 claseActual = "REG";
                 esDefinicionRegistro = false; // ¡NUEVO! Es solo una variable, NO lleva contadores
+                pilaSintactica.pop();
+                continue;
+            }
+            if (tope.equals("816")) {
+                ignorarParaExcel = true; 
+                pilaSintactica.pop();
+                continue;
+            }
+            if (tope.equals("817")) {
+                ignorarParaExcel = false; 
+
+                leyendoOperacion = false;      // Forzamos a salir del modo matemático
+                expresionActual.clear();       // Vaciamos los tokens fantasma como "#Dk = #Dk + 1"
+                tokenIzquierdo = null;
+                tokenAsignacion = null;
+                valorDerechoStr = ""; // <-- ¡Aquí también se reinicia!
                 pilaSintactica.pop();
                 continue;
             }
@@ -1524,19 +1542,23 @@ public class AnalizadorPrincipal extends JFrame {
                 if (!idIzquierdoStr.isEmpty() && !ultimoTemporal.isEmpty()) {
                     asignacionFinal = idIzquierdoStr + " = " + ultimoTemporal;
                 } else if (!idIzquierdoStr.isEmpty()) {
-                    asignacionFinal = idIzquierdoStr + " = (Valor directo)";
+                    asignacionFinal = idIzquierdoStr + " = " + valorDerechoStr;
                 } else if (!ultimoTemporal.isEmpty()) {
                     asignacionFinal = "Eval -> " + ultimoTemporal;
                 }
 
-                // 3. Calculamos la diferencia: cuántos se hicieron SOLAMENTE en esta línea
-                int[] contadoresSoloEstaLinea = new int[9];
-                for (int j = 0; j < 9; j++) {
-                    contadoresSoloEstaLinea[j] = contadoresTemporales[j] - contadoresAntes[j];
-                }
-
                 // Guardamos: [Linea, ArregloContadores, AsignacionFinal]
-                listaResumenOperaciones.add(new Object[]{lineaOperacionActual, contadoresSoloEstaLinea, asignacionFinal});
+                if (!ignorarParaExcel){
+                    // 3. Calculamos la diferencia: cuántos se hicieron SOLAMENTE en esta línea
+                    int[] contadoresSoloEstaLinea = new int[9];
+                    for (int j = 0; j < 9; j++) {
+                        contadoresSoloEstaLinea[j] = contadoresTemporales[j] - contadoresAntes[j];
+                    }
+                    listaResumenOperaciones.add(new Object[]{lineaOperacionActual, contadoresSoloEstaLinea, asignacionFinal});
+                }
+                idIzquierdoStr = "";
+                ultimoTemporal = "";
+                valorDerechoStr = ""; // <-- ¡Aquí se reinicia!
                 // ========================================================
                 // FIN DE CAPTURA PARA EXCEL
                 // ========================================================
@@ -1565,12 +1587,17 @@ public class AnalizadorPrincipal extends JFrame {
             }
 
             if (tope.equals(terminalActual)){
-
                 if (leyendoOperacion) {
-                    
+                    //System.out.println(tokenActual[1]);
                     expresionActual.add(tokenActual);
+                    // NUEVO: Guardamos el primer token de la operación como posible valor directo.
+                if (expresionActual.size() == 1) {
+                    valorDerechoStr = (String) tokenActual[1]; 
+                }
                 } else {
+                    //System.out.println("else de " + tokenActual[1] + " es "+tope);
                     if (terminalActual.equals("id")) {
+                        //System.out.println("token izquierdo es " +tokenActual[1]);
                         tokenIzquierdo = tokenActual;
                     } else if (terminalActual.equals("=") || terminalActual.equals("+=") || 
                             terminalActual.equals("-=") || terminalActual.equals("*=") || terminalActual.equals("/=")) {
@@ -1597,30 +1624,47 @@ public class AnalizadorPrincipal extends JFrame {
                             
                         }
                         else{
-                            String tipo = tipoPersonalizado.isEmpty() ? getTipo(tokenActual) : tipoPersonalizado;
-                            Identificador nuevoId = new Identificador(lexemaActual, tipo, claseActual, ambitoNum);
-
-                            if (claseActual.equals("FUNC")|| (claseActual.equals("REG") && esDefinicionRegistro)){
-                                funcionActual = nuevoId;
-                                nuevoId.numeroPar = 0;
-
-                                nuevoId.tamañoPar = String.valueOf(numAmbito);
-                            }
-                            if (claseActual.equals("PAR")){
-                                if (funcionActual != null){
-                                    funcionActual.numeroPar++;
-                                    nuevoId.numeroPar = funcionActual.numeroPar;
-                                    nuevoId.tamañoPar = funcionActual.id;
+                            boolean tipoValido = true;
+        
+                            // ==============================================================
+                            // NUEVO: Comprobar que el primer ID (tipo de registro) exista
+                            // ==============================================================
+                            if (!tipoPersonalizado.isEmpty()) {
+                                Identificador definicionRegistro = buscarEnTabla(tipoPersonalizado);
+                                
+                                if (definicionRegistro == null) {
+                                    tipoValido = false; // Bloqueamos el guardado de la variable
+                                    
+                                    String descripcion = "El tipo de registro '" + tipoPersonalizado + "' no ha sido declarado previamente."; 
+                                    Object[] datosError = {545, descripcion, tokenActual[1], "Ambito", tokenActual[2], ambitoNum};
+                                    listaErroresSemantico.add(datosError);
+                                    arregloActual = null;
                                 }
                             }
-                            if (claseActual.equals("VAR") || (claseActual.equals("REG") && !esDefinicionRegistro)){
-                                arregloActual = nuevoId;
-                                System.out.println(lexemaActual);
+                            // Solo guardamos el ID si el tipo es válido (o si es una variable primitiva normal)
+                            if (tipoValido) {
+                                String tipo = tipoPersonalizado.isEmpty() ? getTipo(tokenActual) : tipoPersonalizado;
+                                Identificador nuevoId = new Identificador(lexemaActual, tipo, claseActual, ambitoNum);
+
+                                if (claseActual.equals("FUNC") || (claseActual.equals("REG") && esDefinicionRegistro)) {
+                                    funcionActual = nuevoId;
+                                    nuevoId.numeroPar = 0;
+                                    nuevoId.tamañoPar = String.valueOf(numAmbito);
+                                }
+                                if (claseActual.equals("PAR")) {
+                                    if (funcionActual != null) {
+                                        funcionActual.numeroPar++;
+                                        nuevoId.numeroPar = funcionActual.numeroPar;
+                                        nuevoId.tamañoPar = funcionActual.id;
+                                    }
+                                }
+                                if (claseActual.equals("VAR") || (claseActual.equals("REG") && !esDefinicionRegistro)) {
+                                    arregloActual = nuevoId;
+                                }
                                 
+                                ambitoLocal.put(lexemaActual, nuevoId);
+                                registroIdentificadores.add(nuevoId);
                             }
-                            ambitoLocal.put(lexemaActual, nuevoId);
-                            registroIdentificadores.add(nuevoId);
-                            //System.out.println(nuevoId);
                         }
                     }
                     else{
@@ -1887,7 +1931,7 @@ public class AnalizadorPrincipal extends JFrame {
                 //TODO ERROR SEMANTICO "ERROR '5+8' NO COMPATIBLE"
                 String descripcion = "Incompatibilidad de tipos: no se puede aplicar '" + lexemaActual + 
                                 "' entre " + NOMBRES[tipo1] + " y " + NOMBRES[tipo2];
-                Object[] datosError = {544, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico", tokenActual[2]};
+                Object[] datosError = {544, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico1", tokenActual[2]};
                 listaErroresSemantico1.add(datosError);
                 
                 // Guardas el error en tu lista global para imprimirlo en tu tabla/Excel
@@ -1907,7 +1951,7 @@ public class AnalizadorPrincipal extends JFrame {
 
             String temporalAsignado = prefijoTemp + numeroActual;
             
-            System.out.println(lexemaActual + "," + val1 + "," + val2 + "," + temporalAsignado);
+            //System.out.println(lexemaActual + "," + val1 + "," + val2 + "," + temporalAsignado);
             listaCuadruplos.add(new String[]{lexemaActual, nodoIzq[0], nodoDer[0], temporalAsignado});
             return new String[] {temporalAsignado, String.valueOf(tipoResultado)};
         } 
@@ -1926,12 +1970,12 @@ public class AnalizadorPrincipal extends JFrame {
                 // Aquí también podrías registrar error si intentan guardar un CAD en un DEC
                 String descripcion = "Incompatibilidad de tipos: no se puede asignar '" + lexemaActual + 
                                 "' entre " + NOMBRES[tipoDestino] + " y " + NOMBRES[tipoValor];
-                Object[] datosError = {544, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico", tokenActual[2]};
+                Object[] datosError = {544, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico1", tokenActual[2]};
                 listaErroresSemantico1.add(datosError);
             }
             
 
-            System.out.println(lexemaActual + "," + nodoIzq[0] + "," + nodoDer[0]);
+            //System.out.println(lexemaActual + "," + nodoIzq[0] + "," + nodoDer[0]);
             return nodoIzq;
         } 
         // CASO 3: Operando (Variable o Número)
