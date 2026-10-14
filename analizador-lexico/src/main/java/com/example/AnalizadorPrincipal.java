@@ -256,13 +256,13 @@ public class AnalizadorPrincipal extends JFrame {
         {"Console.read", "(", "OR", "B1", ")"},
         {",", "OR", "B1"},
         {"Console.log", "(", "OR", ")"},
-        {"if", "(", "OR", ")", "STATU", "B2"},
-        {"elseif", "(", "OR", ")", "STATU", "B2"},
+        {"if", "(","818", "OR","812", ")", "STATU", "B2"},
+        {"elseif", "(","818", "OR","812", ")", "STATU", "B2"},
         {"else", "STATU"},
         {"OR"},
         {"{", "STATU", "A2", "}"},
-        {"while", "(", "OR", ")", "STATU"},
-        {"do", "STATU", "while", "(", "OR", ")"},
+        {"while", "(","818", "OR","812", ")", "STATU"},
+        {"do", "STATU", "while", "(","818", "OR","812", ")"},
         {"return", "OR"},
         {"for","816", "(","802","801", "OR", "B3", ")","817", "STATU","803"},
         {",", "OR", "B3"},
@@ -301,7 +301,7 @@ public class AnalizadorPrincipal extends JFrame {
         {"FACTOR", "H1"}, // Índice 74: FACTOR H1
         {"^", "FACTOR", "H1"}, // Índice 75: ^ FACTOR H1
         {"DECLARACION CONSTANTES"}, // Índice 76: DECLARACION CONSTANTES
-        {"id", "I1"}, // Índice 77: id I1
+        {"819","id", "I1"}, // Índice 77: id I1
         {"ARR", "I2"}, // Índice 78: ARR I2
         {"ASIG","811", "OR","812", "I3"}, // Índice 79: ASIG OR I3
         {"(", "I4", ")"}, // Índice 80: ( I4 )
@@ -314,7 +314,7 @@ public class AnalizadorPrincipal extends JFrame {
         {"!", "(", "OR", ")"}, // Índice 87: ! ( OR )
         {"~", "(", "OR", ")"}, // Índice 88: ~ ( OR )
         {"FUNCION"}, // Índice 89: FUNCION
-        {"[", "OR", "B1", "]"}, // Índice 90: [ OR B1 ]
+        {"[","820", "OR", "B1", "]"}, // Índice 90: [ OR B1 ]
         {"CLEAR"}, // Índice 91: CLEAR
         {"SQRT", "(", "OR", ")"}, // Índice 92: SQRT ( OR )
         {"POW", "(", "OR", ",", "OR", ")"}, // Índice 93: POW ( OR , OR )
@@ -1440,6 +1440,27 @@ public class AnalizadorPrincipal extends JFrame {
                 pilaSintactica.pop();
                 continue;
             }
+            if (tope.equals("818")){
+                // 1. Encendemos la recolección de tokens matemáticos/lógicos
+                leyendoOperacion = true;
+                
+                // 2. Limpiamos cualquier basura que haya quedado en memoria
+                expresionActual.clear();
+                tokenIzquierdo = null;
+                tokenAsignacion = null;
+                valorDerechoStr = "";
+                pilaSintactica.pop();
+                continue;
+            }
+            //TODO REGLA 3 
+            if (tope.equals("819")){
+                pilaSintactica.pop();
+                continue;
+            }
+            if (tope.equals("820")){
+                pilaSintactica.pop();
+                continue;
+            }
             
             if (tope.equals("810")){
                 claseActual = ""; // Regresa a modo "Uso de variable" (no declaración)
@@ -1546,6 +1567,48 @@ public class AnalizadorPrincipal extends JFrame {
                 } else if (!ultimoTemporal.isEmpty()) {
                     asignacionFinal = "Eval -> " + ultimoTemporal;
                 }
+
+                // ========================================================
+                // NUEVO: Validación exclusiva si NO hay lado izquierdo (Es decir, es una condición)
+                // ========================================================
+                //TODO GUARDAR REGLA 1
+                if (idIzquierdoStr.isEmpty()) { 
+                    boolean esLogico = false;
+                    String valorFinalParaError = "";
+
+                    // Escenario A: Fue una ecuación (Ej. TB1)
+                    if (!ultimoTemporal.isEmpty()) {
+                        valorFinalParaError = ultimoTemporal;
+                        if (ultimoTemporal.startsWith("TB")) {
+                            esLogico = true;
+                        }
+                    } 
+                    // Escenario B: Valor directo (Ej. true, o ¡Bflag)
+                    else if (valorDerechoStr != null && !valorDerechoStr.isEmpty()) {
+                        valorFinalParaError = valorDerechoStr;
+                        if (valorDerechoStr.equals("true") || valorDerechoStr.equals("false")) {
+                            esLogico = true;
+                        } else {
+                            Identificador idVar = buscarEnTabla(valorDerechoStr);
+                            if (idVar != null && (idVar.tipo.equals("Boolean") || idVar.tipo.equals("TBool"))) {
+                                esLogico = true;
+                            }
+                        }
+                    }
+
+                    // Si falló la comprobación, disparamos error semántico
+                    if (!esLogico) {
+                        System.out.println("error Incompatibilidad de tipos: La condición evaluada debe ser de tipo Lógico (Booleana).  "+valorFinalParaError);
+                        // String descripcion = "Incompatibilidad de tipos: La condición evaluada debe ser de tipo Lógico (Booleana).";
+                        // Object[] datosError = {545, descripcion, "Condición: " + valorFinalParaError, "Semantico", tokenActual[2]};
+                        // listaErroresSemantico.add(datosError);
+                    }
+                    else {
+                        System.out.println("bien = " + valorFinalParaError);
+                    }
+                    
+                }
+                // ========================================================
 
                 // Guardamos: [Linea, ArregloContadores, AsignacionFinal]
                 if (!ignorarParaExcel){
@@ -1928,7 +1991,6 @@ public class AnalizadorPrincipal extends JFrame {
             // ¡REGLA APLICADA! Incompatibilidad -> Variant
             // ==========================================
             if (tipoResultado == E) {
-                //TODO ERROR SEMANTICO "ERROR '5+8' NO COMPATIBLE"
                 String descripcion = "Incompatibilidad de tipos: no se puede aplicar '" + lexemaActual + 
                                 "' entre " + NOMBRES[tipo1] + " y " + NOMBRES[tipo2];
                 Object[] datosError = {544, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico1", tokenActual[2]};
@@ -1957,6 +2019,7 @@ public class AnalizadorPrincipal extends JFrame {
         } 
         // CASO 2: Asignación
         else if (esAsignacion(lexemaActual)) {
+            //TODO REGLA 2 
             String[] nodoIzq = generarCuadruplosRecursivo(prefijo);
             String[] nodoDer = generarCuadruplosRecursivo(prefijo);
             
