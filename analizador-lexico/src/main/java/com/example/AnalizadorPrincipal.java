@@ -75,6 +75,11 @@ public class AnalizadorPrincipal extends JFrame {
 
     int nivelDeCorchetes = 0;
 
+    // === NUEVAS VARIABLES GLOBALES PARA AISLAR ARREGLOS ===
+    List<Object[]> bufferArreglo = new ArrayList<>();
+    boolean evaluandoArreglo = false;
+    String lexemaArregloCompleto = ""; // Para reconstruir la llamada, ej: "#Dm[1, 2]"
+
     private List<String[]> listaCuadruplos = new ArrayList<>();
 
     private int[] contadoresTemporales = new int[9];
@@ -920,7 +925,7 @@ public class AnalizadorPrincipal extends JFrame {
         JButton btnCompilar = new JButton("Compilar");
         btnCompilar.addActionListener(e -> compilar());
         
-        JButton btntxtAvance1Semantica2 = new JButton("Crear txt Avance 1");
+        JButton btntxtAvance1Semantica2 = new JButton("Crear txt Avance 3");
         btntxtAvance1Semantica2.addActionListener(e -> ExportarReglasTXT());
         
         JButton btnXLS = new JButton("Crear XLS");
@@ -1527,41 +1532,47 @@ public class AnalizadorPrincipal extends JFrame {
                 continue;
             }
 
+            // =====================================================================
+            // Acción 819: Inicia el Arreglo (Abre Corchete)
+            // =====================================================================
             if (tope.equals("819")){
-                nivelDeCorchetes ++;
+                nivelDeCorchetes++;
                 arregloEnUso = buscarEnTabla(ultimoIdVisto); 
                 idIzquierdoStr = ultimoIdVisto;
                 contadorDimensionesUso = 0;
-                tokensDimensiones.clear();
                 vieneDeArreglo = true;
+                
+                // Iniciamos el modo "Aislamiento de Arreglo"
+                evaluandoArreglo = true;
+                bufferArreglo.clear();
+                //TODO VERIFICAR EN EL FUTURO QUE SEA EXPRESIONACTUAL.REMOVE(EXPRESIONACTUAL.SIZE () - 1)
+                expresionActual.clear(); // NUEVO: Borramos la "basura" que el léxico metió antes de aislar
+                lexemaArregloCompleto = ultimoIdVisto + "["; 
+                
                 leyendoOperacion = true;
-                expresionActual.clear();
-                //tokenIzquierdo = null;
-                //tokenAsignacion = null;
                 valorDerechoStr = "";
                 pilaSintactica.pop();
                 continue;
             }
 
-
-            // 820 DESPUES DE CADA OR
+            // =====================================================================
+            // Acción 820: Evaluar Dimensión Individual del Arreglo
+            // =====================================================================
             if (tope.equals("820")) {
-                // ESCUDO: Solo ejecutamos esto si estamos en un arreglo y NO en una llamada a función
-                if (arregloEnUso != null && funcionLlamadaActual.isEmpty()) {
+                if (arregloEnUso != null) {
                     leyendoOperacion = false;
 
-                    if (!expresionActual.isEmpty()) {
-                        contadorDimensionesUso++; // Sumamos la dimensión que acabamos de leer
-                        
+                    if (!bufferArreglo.isEmpty()) {
+                        contadorDimensionesUso++; 
                         String valorFinalDimension = "";
                         Object[] tokenEvaluado = null;
 
-                        // 1. Resolver el valor de esta dimensión (un solo token o una operación)
-                        if (expresionActual.size() == 1) {
-                            tokenEvaluado = expresionActual.get(0);
+                        // 1. Resolver el valor usando el buffer aislado
+                        if (bufferArreglo.size() == 1) {
+                            tokenEvaluado = bufferArreglo.get(0);
                             valorFinalDimension = (String) tokenEvaluado[1];
                         } else {
-                            List<Object[]> prefijaDer = convertirAPrefijo(expresionActual);
+                            List<Object[]> prefijaDer = convertirAPrefijo(bufferArreglo);
                             indiceGlobalPrefijo = 0;
                             int indexInicioCuadruplos = listaCuadruplos.size();
                             generarCuadruplosRecursivo(prefijaDer);
@@ -1578,7 +1589,13 @@ public class AnalizadorPrincipal extends JFrame {
                             tokenEvaluado = new Object[]{"id", valorFinalDimension, tokenActual[2]};
                         }
 
-                        // 2. VALIDACIÓN INMEDIATA (REGLA 3 Y REGLA 4)
+                        // Anexar la dimensión evaluada para reconstruir el string visual
+                        if (contadorDimensionesUso > 1) {
+                            lexemaArregloCompleto += ", ";
+                        }
+                        lexemaArregloCompleto += valorFinalDimension;
+
+                        // 2. VALIDACIÓN INMEDIATA (REGLA 3, 4 y 5)
                         if (arregloEnUso.dimensionArr != null) {
                             String cveRegla3 = "1030";
                             String descRegla3 = "CANT. DIMENSIONES";
@@ -1586,64 +1603,38 @@ public class AnalizadorPrincipal extends JFrame {
                             String descRegla4 = "EXP. ES ENTERA";
                             int ambitoActual = pilaContadorAmbito.isEmpty() ? 0 : pilaContadorAmbito.peek();
 
-                            // A) REGLA 3: ¿Ya se pasó de las dimensiones declaradas?
+                            // Regla 3
                             if (contadorDimensionesUso > arregloEnUso.dimensionArr) {
-                                // FALLA REGLA 3 (Se pasó de dimensiones, NO checamos Regla 4)
                                 String descFallo = "Se excedió la cantidad de dimensiones declaradas (" + arregloEnUso.dimensionArr + ")";
                                 System.out.println("error " + descFallo);
-
-                                listaRegistroReglas.add(new Object[]{
-                                    tokenEvaluado[2], cveRegla3, descRegla3, 
-                                    "Error, " + descFallo, arregloEnUso.id, ambitoActual
-                                });
-                                Object[] error = {546, descRegla3, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]};
-                                listaErroresSemantico2.add(error);
-
+                                listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla3, descRegla3, "Error, " + descFallo, arregloEnUso.id, ambitoActual});
+                                listaErroresSemantico2.add(new Object[]{546, descRegla3, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]});
                             } else {
-                                // CUMPLE REGLA 3: Esta dimensión está dentro del rango permitido
-                                listaRegistroReglas.add(new Object[]{
-                                    tokenEvaluado[2], cveRegla3, descRegla3, 
-                                    "Acept", arregloEnUso.id, ambitoActual
-                                });
+                                listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla3, descRegla3, "Acept", arregloEnUso.id, ambitoActual});
 
-                                // B) REGLA 4 ANIDADA: Checamos si esta expresión es entera
+                                // Regla 4
                                 boolean esEntera = false;
                                 if (valorFinalDimension.startsWith("TD")) {
                                     esEntera = true;
                                 } else {
                                     String tipo = getTipo(tokenEvaluado);
-                                    if (tipo.equals("Dec") || (tipo.isEmpty() && valorFinalDimension.startsWith("#D"))) {
-                                        esEntera = true;
-                                    }
+                                    if (tipo.equals("Dec") || (tipo.isEmpty() && valorFinalDimension.startsWith("#D"))) esEntera = true;
                                 }
 
                                 if (!esEntera) {
-                                    // FALLA REGLA 4
                                     System.out.println("error La exp no es entera: " + valorFinalDimension);
-                                    listaRegistroReglas.add(new Object[]{
-                                        tokenEvaluado[2], cveRegla4, descRegla4, 
-                                        "Error, la expresión no es entera", valorFinalDimension, ambitoActual
-                                    });
-                                    Object[] error = {547, descRegla4, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]};
-                                    listaErroresSemantico2.add(error);
+                                    listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla4, descRegla4, "Error, la expresión no es entera", valorFinalDimension, ambitoActual});
+                                    listaErroresSemantico2.add(new Object[]{547, descRegla4, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]});
                                 } else {
-                                    // CUMPLE REGLA 4
                                     System.out.println("bien = Expresión entera válida: " + valorFinalDimension);
-                                    listaRegistroReglas.add(new Object[]{
-                                        tokenEvaluado[2], cveRegla4, descRegla4, 
-                                        "Acept", valorFinalDimension, ambitoActual
-                                    });
+                                    listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla4, descRegla4, "Acept", valorFinalDimension, ambitoActual});
 
-                                    // ==========================================================
-                                    // IF ANIDADO: CHEQUEO DE REGLA 5 (RANGO DE LA DIMENSIÓN)
-                                    // ==========================================================
+                                    // Regla 5
                                     String cveRegla5 = "1050";
                                     String descRegla5 = "INDICE EN RANGO";
-                                    
                                     String[] limitesDeclarados = arregloEnUso.tArr.split(",");
                                     int indiceActual = contadorDimensionesUso - 1;
                                     int limiteMaximo = Integer.parseInt(limitesDeclarados[indiceActual].trim());
-
                                     boolean enRango = false;
 
                                     if (valorFinalDimension.startsWith("TD")) {
@@ -1654,100 +1645,83 @@ public class AnalizadorPrincipal extends JFrame {
                                             enRango = true;
                                         } else if (numToken == -57) {
                                             int valorConstante = Integer.parseInt(valorFinalDimension);
-                                            if (valorConstante >= 0 && valorConstante < limiteMaximo) {
-                                                enRango = true;
-                                            }
+                                            if (valorConstante >= 0 && valorConstante < limiteMaximo) enRango = true;
                                         }
                                     }
 
-                                    // Registramos el resultado de la Regla 5
                                     if (!enRango) {
                                         String descFalloRango = "Índice fuera de rango: se usó '" + valorFinalDimension + "'";
                                         System.out.println("error " + descFalloRango);
-
-                                        listaRegistroReglas.add(new Object[]{
-                                            tokenEvaluado[2], cveRegla5, descRegla5, 
-                                            "Error, " + descFalloRango, valorFinalDimension, ambitoActual
-                                        });
-                                        Object[] datosErrorRango = {548, descFalloRango, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]};
-                                        listaErroresSemantico2.add(datosErrorRango);
+                                        listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla5, descRegla5, "Error, " + descFalloRango, valorFinalDimension, ambitoActual});
+                                        listaErroresSemantico2.add(new Object[]{548, descFalloRango, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]});
                                     } else {
                                         System.out.println("bien = Índice dentro del rango permitido (" + valorFinalDimension + " < " + limiteMaximo + ")");
-
-                                        listaRegistroReglas.add(new Object[]{
-                                            tokenEvaluado[2], cveRegla5, descRegla5, 
-                                            "Acept", valorFinalDimension, ambitoActual
-                                        });
+                                        listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla5, descRegla5, "Acept", valorFinalDimension, ambitoActual});
                                     }
                                 }
                             }
                         }
-
-                        // Limpieza de buffer exclusiva para dimensiones de arreglos
-                        expresionActual.clear();
+                        // Limpieza del buffer aislado para la siguiente dimensión
+                        bufferArreglo.clear();
                         valorDerechoStr = "";
                     }
                 }
-
                 pilaSintactica.pop();
                 continue;
             }
 
-            //821 DESPUES DE CADA COMA SE REINCIA OPERACION
+            // =====================================================================
+            // Acción 821: Reiniciar operación después de la coma (Para Arreglos y Funciones)
+            // =====================================================================
             if (tope.equals("821")){
-                // Encendemos de nuevo la recolección para el siguiente "OR"
-                expresionActual.clear(); // Destruye la coma del buffer
+                if (evaluandoArreglo) {
+                    bufferArreglo.clear();
+                } else {
+                    expresionActual.clear();
+                }
                 leyendoOperacion = true;
                 pilaSintactica.pop();
                 continue;
             }
 
-            //Se activa al cerrar el "]" (Aplica REGLA 3)
+            // =====================================================================
+            // Acción 822: Cierra el Arreglo (Inyecta el resultado al buffer principal)
+            // =====================================================================
             if (tope.equals("822")){
-                nivelDeCorchetes --;
+                nivelDeCorchetes--;
+                lexemaArregloCompleto += "]";
 
                 if (arregloEnUso != null && arregloEnUso.dimensionArr != null) {
-        
-                    // Verificamos si las dimensiones utilizadas NO son iguales a las declaradas
                     if (contadorDimensionesUso != arregloEnUso.dimensionArr) {
-                        
-                        // PREPARACIÓN DE DATOS PARA EL ERROR
-                        String cveRegla3 = "1030"; // O el CVE correcto de tu tabla para la Regla 3
+                        String cveRegla3 = "1030";
                         String descRegla3 = "CANT. DIMENSIONES";
-                        String lexemaArreglo = arregloEnUso.id;
-                        int ambitoActual =  pilaContadorAmbito.peek();
+                        int ambitoActual = pilaContadorAmbito.peek();
                         
-                        System.out.println("error Error de dimensiones en " + lexemaArreglo + ". ");
-                        
-                        // 1. Guardar en registro de reglas para tu archivo TXT indicando que falló
-                        listaRegistroReglas.add(new Object[]{
-                            tokenActual[2], 
-                            cveRegla3, 
-                            descRegla3, 
-                            "Error", 
-                            lexemaArreglo, 
-                            ambitoActual
-                        });
-
-                        // // 2. Lanzar tu error semántico general a la tabla de errores (Error 546)
-                        Object[] error = {546, descRegla3, arregloEnUso.id, "Semantico 2",tokenActual[2]};
-                        listaErroresSemantico2.add(error);
+                        System.out.println("error Error de dimensiones en " + arregloEnUso.id + ". ");
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], cveRegla3, descRegla3, "Error", arregloEnUso.id, ambitoActual});
+                        listaErroresSemantico2.add(new Object[]{546, descRegla3, arregloEnUso.id, "Semantico 2", tokenActual[2]});
                     }
-                    
-                    // "Si sí está bien no regresamos nada" -> No hay bloque 'else'.
                 }
 
-                // ==========================================================
+                // EL TRUCO DE INYECCIÓN: Meter el arreglo consolidado a la grabadora de la función
+                // Si la función está grabando, fingimos que el arreglo es un solo token (ID).
+                if (!funcionLlamadaActual.isEmpty()) {
+                    expresionActual.add(new Object[]{"id", arregloEnUso.id, tokenActual[2]});
+                    // IMPORTANTE: Mantenemos la grabadora principal apagada para que la acción 861 procese el parámetro.
+                    leyendoOperacion = false; 
+                }
+
                 // LIMPIEZA FINAL
-                // ==========================================================
-                // Reseteamos las variables para que el compilador esté listo 
-                // cuando encuentre el siguiente arreglo en el código.
                 arregloEnUso = null;
                 contadorDimensionesUso = 0;
                 vieneDeArreglo = false;
+                evaluandoArreglo = false; // Apagamos el modo aislamiento
+                lexemaArregloCompleto = "";
+                
                 pilaSintactica.pop();
                 continue;
             }
+
             if (tope.equals("823")){
                 estructuraEnUso = (String) tokenActual[1];
                 pilaSintactica.pop();
@@ -2651,7 +2625,12 @@ public class AnalizadorPrincipal extends JFrame {
                                     // ==========================================================
                                     if (expresionActual.size() == 1) {
                                         tokenEvaluado = expresionActual.get(0);
-                                        valorFinal = (String) tokenEvaluado[1];
+                                        // IMPORTANTE: Nos aseguramos de extraer el string (el nombre del ID) sin importar si está en la posición 0 o 1
+                                        if (tokenEvaluado[1] != null && !tokenEvaluado[1].toString().isEmpty()) {
+                                            valorFinal = tokenEvaluado[1].toString(); // Posición donde suele estar el lexema
+                                        } else if (tokenEvaluado[0] != null && tokenEvaluado[0].toString().startsWith("#")) {
+                                            valorFinal = tokenEvaluado[0].toString(); // Por si el ID se metió en la posición 0
+                                        }
                                     } else {
                                         List<Object[]> prefijaDer = convertirAPrefijo(expresionActual);
                                         indiceGlobalPrefijo = 0;
@@ -2947,12 +2926,15 @@ public class AnalizadorPrincipal extends JFrame {
 
             if (tope.equals(terminalActual)){
                 if (leyendoOperacion) {
-                    //System.out.println(tokenActual[1]);
-                    expresionActual.add(tokenActual);
-                    // NUEVO: Guardamos el primer token de la operación como posible valor directo.
-                if (expresionActual.size() == 1) {
-                    valorDerechoStr = (String) tokenActual[1]; 
-                }
+                    if (evaluandoArreglo) {
+                        bufferArreglo.add(new Object[]{tokenActual[0], tokenActual[1], tokenActual[2]});
+                    } else {
+                        expresionActual.add(new Object[]{tokenActual[0], tokenActual[1], tokenActual[2]}); 
+                        if (expresionActual.size() == 1) {
+                            valorDerechoStr = (String) tokenActual[1]; 
+                        }
+                    }
+                    
                 } else {
                     //System.out.println("else de " + tokenActual[1] + " es "+tope);
                     if (terminalActual.equals("id")) {
@@ -3940,7 +3922,7 @@ private void llenarDatosHoja(Sheet hoja, List<Object[]> datos) {
         // Filtro para que solo permita guardar como .txt
         fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivo de Texto (*.txt)", "txt"));
         // Nombre por defecto sugerido
-        fc.setSelectedFile(new File("RegistroReglasAvance2-Semantica2-BrandonFornes")); 
+        fc.setSelectedFile(new File("RegistroReglasAvance3-Semantica2-BrandonFornes")); 
 
         if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
             File archivo = fc.getSelectedFile();
