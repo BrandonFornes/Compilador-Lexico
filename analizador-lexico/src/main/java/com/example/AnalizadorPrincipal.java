@@ -1545,8 +1545,8 @@ public class AnalizadorPrincipal extends JFrame {
                 // Iniciamos el modo "Aislamiento de Arreglo"
                 evaluandoArreglo = true;
                 bufferArreglo.clear();
-                //TODO VERIFICAR EN EL FUTURO QUE SEA EXPRESIONACTUAL.REMOVE(EXPRESIONACTUAL.SIZE () - 1)
-                expresionActual.clear(); // NUEVO: Borramos la "basura" que el léxico metió antes de aislar
+                expresionActual.remove(expresionActual.size() - 1);
+                //expresionActual.clear(); // NUEVO: Borramos la "basura" que el léxico metió antes de aislar
                 lexemaArregloCompleto = ultimoIdVisto + "["; 
                 
                 leyendoOperacion = true;
@@ -1706,9 +1706,9 @@ public class AnalizadorPrincipal extends JFrame {
                 // EL TRUCO DE INYECCIÓN: Meter el arreglo consolidado a la grabadora de la función
                 // Si la función está grabando, fingimos que el arreglo es un solo token (ID).
                 if (!funcionLlamadaActual.isEmpty()) {
-                    expresionActual.add(new Object[]{"id", arregloEnUso.id, tokenActual[2]});
+                    //expresionActual.add(new Object[]{"id", arregloEnUso.id, tokenActual[2]});
                     // IMPORTANTE: Mantenemos la grabadora principal apagada para que la acción 861 procese el parámetro.
-                    leyendoOperacion = false; 
+                    //leyendoOperacion = false; 
                 }
 
                 // LIMPIEZA FINAL
@@ -1941,7 +1941,7 @@ public class AnalizadorPrincipal extends JFrame {
                 String lexemaVar = ultimoIdVisto; // Rescatamos el nombre de la variable
                 Identificador idVar = buscarEnTabla(lexemaVar);
                 
-                String cveRegla7 = "1070"; // TODO: Ajusta este CVE a tu tabla de reglas
+                String cveRegla7 = "1070";
                 String descRegla7 = "UNARIO CON ENTERO";
                 int ambitoActual = pilaContadorAmbito.peek(); 
                 
@@ -2051,7 +2051,7 @@ public class AnalizadorPrincipal extends JFrame {
                     }
 
                     int ambitoActual = pilaContadorAmbito.peek(); 
-                    String cveRegla7 = "1070"; // TODO: Ajusta este CVE a tu tabla de reglas
+                    String cveRegla7 = "1070";
                     String descRegla7 = "UNARIO CON ENTERO";
                     // ============================================================
                     // VALIDACIÓN PARA '!' (Acción 827 - Debe ser Booleano)
@@ -3341,7 +3341,7 @@ public class AnalizadorPrincipal extends JFrame {
             // A) Asignación Directa (=)
             if (lexemaActual.equals("=") || lexemaActual.equals("=>")) {
                 // Son compatibles si son el mismo tipo, o si alguno es comodín VAR
-                //TODO CHECAR SI LADO DERECHO ES VAR DA ERROR O NO
+                
                 if (tipoDestino == tipoValor || tipoDestino == VAR || tipoValor == VAR) {
                     esCompatible = true;
                 }
