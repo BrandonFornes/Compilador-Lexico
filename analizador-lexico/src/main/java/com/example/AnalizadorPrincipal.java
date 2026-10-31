@@ -62,6 +62,19 @@ public class AnalizadorPrincipal extends JFrame {
     Object[] tokenIzquierdo = null;
     Object[] tokenAsignacion = null;
 
+    //VARIABLES SEMANTICA 2
+    boolean enFuncion = false;
+    boolean enProcedimiento = false;
+    String idMetodoActual = "";
+    String tipoMetodoActual = "";
+    boolean encontroReturn = false;
+
+    String funcionLlamadaActual = "";
+    int contadorArgumentos = 0;
+    boolean errorRegla15 = false;
+
+    int nivelDeCorchetes = 0;
+
     private List<String[]> listaCuadruplos = new ArrayList<>();
 
     private int[] contadoresTemporales = new int[9];
@@ -237,7 +250,7 @@ public class AnalizadorPrincipal extends JFrame {
         {",","807", "const decimal", "A5"},
         {"[","807", "const decimal", "A5", "]"},
         {",", "A4", "id", "A6", "A7"},
-        {"def","805", "id","802" ,"LISTA DE PARAMETROS", "PROGRAMA","803", ";","810", "A1"},
+        {"def","805", "id","802","835","LISTA DE PARAMETROS", "PROGRAMA","803", ";","810", "A1"},
         {"808","id", "=", "DECLARACION CONSTANTES", "A8", ";","810", "A1"},
         {",", "id", "=", "DECLARACION CONSTANTES", "A8"}, 
         {"ε"},
@@ -257,16 +270,16 @@ public class AnalizadorPrincipal extends JFrame {
         {"const octal"},
         {"const hexadecimal"},
         {"Console.read", "(", "OR", "B1", ")"},
-        {",","821", "OR","820", "B1"},// INDICE 30 
+        {",","821", "OR","820","839", "B1"},// INDICE 30 
         {"Console.log", "(", "OR", ")"},
-        {"823","if", "(","818", "OR","812", ")", "STATU", "B2"},
-        {"823","elseif", "(","818", "OR","812", ")", "STATU", "B2"},
+        {"823","if", "(","818", "OR","834", ")", "STATU", "B2"},
+        {"823","elseif", "(","818", "OR","834", ")", "STATU", "B2"},
         {"else", "STATU"},
         {"OR"},
         {"{", "STATU", "A2", "}"},
-        {"823","while", "(","818", "OR","812", ")", "STATU"},
-        {"823","do", "STATU", "while", "(","818", "OR","812", ")"},
-        {"return", "OR"},
+        {"823","while", "(","818", "OR","834", ")", "STATU"},
+        {"823","do", "STATU", "while", "(","818", "OR","834", ")"},
+        {"return","836", "OR","837"},
         {"for","816", "(","802","801","818", "OR", "B3", ")","817", "STATU","803"},
         {",", "OR", "B3"},
         {":","800","829", "OR","830"},
@@ -307,10 +320,10 @@ public class AnalizadorPrincipal extends JFrame {
         {"id", "I1"}, // Índice 77: id I1
         {"ARR", "I2"}, // Índice 78: ARR I2
         {"ASIG","811", "OR","812", "I3"}, // Índice 79: ASIG OR I3
-        {"(", "I4", ")"}, // Índice 80: ( I4 )
-        {"ASIG", "OR", "I3"}, // Índice 81: ASIG OR I3
+        {"(","838", "I4", ")","840"}, // Índice 80: ( I4 )
+        {"ASIG","811", "OR","812", "I3"}, // Índice 81: ASIG OR I3
         {"?", "OR", ":", "OR"}, // Índice 82: ? OR : OR
-        {"OR", "B1"}, // Índice 83: OR B1
+        {"OR","839", "B1"}, // Índice 83: OR B1
         {"++","id","826", "I1"}, // Índice 84: ++ id I1
         {"--","id","826", "I1"}, // Índice 85: -- id I1
         {"(", "OR", ")"}, // Índice 86: ( OR )
@@ -1353,6 +1366,7 @@ public class AnalizadorPrincipal extends JFrame {
         String lexemaAsignacionFor = "";
         int parteForClasico = 0;  // <--- AQUÍ ESTÁ
         String idIzquierdoStr = "";
+        boolean vieneDeArreglo = false;
 
         pilaIdentificadores.clear();
         pilaIdentificadores.push(new HashMap<>());
@@ -1408,9 +1422,38 @@ public class AnalizadorPrincipal extends JFrame {
             }
 
             if (tope.equals("803")){
+                // Insertar esto DENTRO de tu Acción 803 actual, antes del pop()
+                int ambitoActual = pilaContadorAmbito.isEmpty() ? 0 : pilaContadorAmbito.peek();
+
+                // Regla 1130: Toda función debe tener al menos un retorno[cite: 13]
+                if (enFuncion) {
+                    if (encontroReturn) {
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1130", "RETURN DE FUNCION", "Acept", idMetodoActual, ambitoActual});
+                    } else {
+                        String errorMsg = "La función declarada debe contener por lo menos un retorno";
+                        System.out.println("error " + errorMsg);
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1130", "RETURN DE FUNCION", "Error", idMetodoActual, ambitoActual});
+                        listaErroresSemantico2.add(new Object[]{561, errorMsg, idMetodoActual, "Semantico 2", tokenActual[2]});
+                    }
+                } 
+                // Regla 1140: Procedimiento no debe tener retorno (Verificación final de Acept)[cite: 13]
+                else if (enProcedimiento) {
+                    if (!encontroReturn) {
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1140", "NO RETURN DE PROCEDIMIENTO", "Acept", idMetodoActual, ambitoActual});
+                    }
+                }
+
+                // Apagamos las banderas para el resto del programa
+                enFuncion = false;
+                enProcedimiento = false;
+                idMetodoActual = "";
+                tipoMetodoActual = "";
+                encontroReturn = false;
+
                 if (!pilaIdentificadores.isEmpty()) {
                 pilaIdentificadores.pop();
                 }
+
                 pilaContadorAmbito.pop();
                 pilaSintactica.pop();
                 continue;
@@ -1485,191 +1528,175 @@ public class AnalizadorPrincipal extends JFrame {
             }
 
             if (tope.equals("819")){
+                nivelDeCorchetes ++;
                 arregloEnUso = buscarEnTabla(ultimoIdVisto); 
+                idIzquierdoStr = ultimoIdVisto;
                 contadorDimensionesUso = 0;
                 tokensDimensiones.clear();
-
+                vieneDeArreglo = true;
                 leyendoOperacion = true;
                 expresionActual.clear();
-                tokenIzquierdo = null;
-                tokenAsignacion = null;
+                //tokenIzquierdo = null;
+                //tokenAsignacion = null;
                 valorDerechoStr = "";
                 pilaSintactica.pop();
                 continue;
             }
 
 
-            //820 DESPUES DE CADA OR
-            if (tope.equals("820")){
-            leyendoOperacion = false;
+            // 820 DESPUES DE CADA OR
+            if (tope.equals("820")) {
+                // ESCUDO: Solo ejecutamos esto si estamos en un arreglo y NO en una llamada a función
+                if (arregloEnUso != null && funcionLlamadaActual.isEmpty()) {
+                    leyendoOperacion = false;
 
-            if (!expresionActual.isEmpty()) {
-                contadorDimensionesUso++; // Sumamos la dimensión que acabamos de leer
-                
-                String valorFinalDimension = "";
-                Object[] tokenEvaluado = null;
-
-                // 1. Resolver el valor de esta dimensión (un solo token o una operación)
-                if (expresionActual.size() == 1) {
-                    tokenEvaluado = expresionActual.get(0);
-                    valorFinalDimension = (String) tokenEvaluado[1];
-                } else {
-                    List<Object[]> prefijaDer = convertirAPrefijo(expresionActual);
-                    indiceGlobalPrefijo = 0;
-                    int indexInicioCuadruplos = listaCuadruplos.size();
-                    generarCuadruplosRecursivo(prefijaDer);
-
-                    if (listaCuadruplos.size() > indexInicioCuadruplos) {
-                        String[] ultimoCuad = listaCuadruplos.get(listaCuadruplos.size() - 1);
-                        if (ultimoCuad.length > 3 && ultimoCuad[3] != null && ultimoCuad[3].startsWith("T")) {
-                            valorFinalDimension = ultimoCuad[3];
-                        }
-                    }
-                    if (valorFinalDimension.isEmpty() && valorDerechoStr != null && !valorDerechoStr.isEmpty()) {
-                        valorFinalDimension = valorDerechoStr;
-                    }
-                    tokenEvaluado = new Object[]{"id", valorFinalDimension, tokenActual[2]};
-                }
-
-                // 2. VALIDACIÓN INMEDIATA (REGLA 3 Y REGLA 4)
-                if (arregloEnUso != null && arregloEnUso.dimensionArr != null) {
-                    String cveRegla3 = "1030";
-                    String descRegla3 = "cantidad de dimensiones utilizadas debe ser igual a declarada";
-                    String cveRegla4 = "1040";
-                    String descRegla4 = "La exp de una lista de arreglo debe ser entera";
-                    int ambitoActual =  pilaContadorAmbito.peek();
-
-                    // A) REGLA 3: ¿Ya se pasó de las dimensiones declaradas?
-                    if (contadorDimensionesUso > arregloEnUso.dimensionArr) {
+                    if (!expresionActual.isEmpty()) {
+                        contadorDimensionesUso++; // Sumamos la dimensión que acabamos de leer
                         
-                        // FALLA REGLA 3 (Se pasó de dimensiones, NO checamos Regla 4)
-                        String descFallo = "Se excedió la cantidad de dimensiones declaradas (" + arregloEnUso.dimensionArr + ")";
-                        System.out.println("error " + descFallo);
+                        String valorFinalDimension = "";
+                        Object[] tokenEvaluado = null;
 
-                        listaRegistroReglas.add(new Object[]{
-                            tokenEvaluado[2], cveRegla3, descRegla3, 
-                            "Error, " + descFallo, arregloEnUso.id, ambitoActual
-                        });
-                        Object[] error = {546, descRegla3, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]};
-                        listaErroresSemantico2.add(error);
-
-                    } else {
-                        // CUMPLE REGLA 3: Esta dimensión está dentro del rango permitido[cite: 1, 2]
-                        listaRegistroReglas.add(new Object[]{
-                            tokenEvaluado[2], cveRegla3, descRegla3, 
-                            "Acept", arregloEnUso.id, ambitoActual
-                        });
-
-                        // B) REGLA 4 ANIDADA: Checamos si esta expresión es entera[cite: 3, 6]
-                        boolean esEntera = false;
-                        if (valorFinalDimension.startsWith("TD")) {
-                            esEntera = true;
+                        // 1. Resolver el valor de esta dimensión (un solo token o una operación)
+                        if (expresionActual.size() == 1) {
+                            tokenEvaluado = expresionActual.get(0);
+                            valorFinalDimension = (String) tokenEvaluado[1];
                         } else {
-                            String tipo = getTipo(tokenEvaluado);
-                            if (tipo.equals("Dec") || (tipo.isEmpty() && valorFinalDimension.startsWith("#D"))) {
-                                esEntera = true;
+                            List<Object[]> prefijaDer = convertirAPrefijo(expresionActual);
+                            indiceGlobalPrefijo = 0;
+                            int indexInicioCuadruplos = listaCuadruplos.size();
+                            generarCuadruplosRecursivo(prefijaDer);
+
+                            if (listaCuadruplos.size() > indexInicioCuadruplos) {
+                                String[] ultimoCuad = listaCuadruplos.get(listaCuadruplos.size() - 1);
+                                if (ultimoCuad.length > 3 && ultimoCuad[3] != null && ultimoCuad[3].startsWith("T")) {
+                                    valorFinalDimension = ultimoCuad[3];
+                                }
                             }
+                            if (valorFinalDimension.isEmpty() && valorDerechoStr != null && !valorDerechoStr.isEmpty()) {
+                                valorFinalDimension = valorDerechoStr;
+                            }
+                            tokenEvaluado = new Object[]{"id", valorFinalDimension, tokenActual[2]};
                         }
 
-                        if (!esEntera) {
-                            // FALLA REGLA 4
-                            System.out.println("error La exp no es entera: " + valorFinalDimension);
-                            listaRegistroReglas.add(new Object[]{
-                                tokenEvaluado[2], cveRegla4, descRegla4, 
-                                "Error, la expresión no es entera", valorFinalDimension, ambitoActual
-                            });
-                            Object[] error = {547, descRegla4, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]};
-                            listaErroresSemantico2.add(error);
-                        } else {
-                            // CUMPLE REGLA 4
-                            System.out.println("bien = Expresión entera válida: " + valorFinalDimension);
-                            listaRegistroReglas.add(new Object[]{
-                                tokenEvaluado[2], cveRegla4, descRegla4, 
-                                "Acept", valorFinalDimension, ambitoActual
-                            });
+                        // 2. VALIDACIÓN INMEDIATA (REGLA 3 Y REGLA 4)
+                        if (arregloEnUso.dimensionArr != null) {
+                            String cveRegla3 = "1030";
+                            String descRegla3 = "CANT. DIMENSIONES";
+                            String cveRegla4 = "1040";
+                            String descRegla4 = "EXP. ES ENTERA";
+                            int ambitoActual = pilaContadorAmbito.isEmpty() ? 0 : pilaContadorAmbito.peek();
 
-                            // ==========================================================
-                            // IF ANIDADO: CHEQUEO DE REGLA 5 (RANGO DE LA DIMENSIÓN)
-                            // ==========================================================
-                            String cveRegla5 = "1050";
-                            String descRegla5 = "El índice del arreglo debe estar dentro del rango declarado";
-                            
-                            // 1. Extraemos el límite declarado para la dimensión actual desde tArr (ej. "5,5,5")
-                            String[] limitesDeclarados = arregloEnUso.tArr.split(",");
-                            int indiceActual = contadorDimensionesUso - 1; // Ajustamos a índice base 0
-                            int limiteMaximo = Integer.parseInt(limitesDeclarados[indiceActual].trim());
+                            // A) REGLA 3: ¿Ya se pasó de las dimensiones declaradas?
+                            if (contadorDimensionesUso > arregloEnUso.dimensionArr) {
+                                // FALLA REGLA 3 (Se pasó de dimensiones, NO checamos Regla 4)
+                                String descFallo = "Se excedió la cantidad de dimensiones declaradas (" + arregloEnUso.dimensionArr + ")";
+                                System.out.println("error " + descFallo);
 
-                            boolean enRango = false;
+                                listaRegistroReglas.add(new Object[]{
+                                    tokenEvaluado[2], cveRegla3, descRegla3, 
+                                    "Error, " + descFallo, arregloEnUso.id, ambitoActual
+                                });
+                                Object[] error = {546, descRegla3, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]};
+                                listaErroresSemantico2.add(error);
 
-                            // Caso A: Es un temporal decimal (ej. TD1) -> Automáticamente dentro del rango
-                            if (valorFinalDimension.startsWith("TD")) {
-                                enRango = true;
-                            } 
-                            // Caso B: Evaluamos el número de token (-57 o -62)
-                            else {
-                                int numToken = Integer.parseInt(tokenEvaluado[0].toString());
-                                
-                                if (numToken == -62) {
-                                    // Identificador decimal (ej. #Dindex) -> Automáticamente dentro del rango
-                                    enRango = true;
-                                } else if (numToken == -57) {
-                                    // Constante entera (ej. 2, 4, 6) -> Verificamos que sea menor al límite declarado
-                                    int valorConstante = Integer.parseInt(valorFinalDimension);
-                                    if (valorConstante >= 0 && valorConstante < limiteMaximo) {
+                            } else {
+                                // CUMPLE REGLA 3: Esta dimensión está dentro del rango permitido
+                                listaRegistroReglas.add(new Object[]{
+                                    tokenEvaluado[2], cveRegla3, descRegla3, 
+                                    "Acept", arregloEnUso.id, ambitoActual
+                                });
+
+                                // B) REGLA 4 ANIDADA: Checamos si esta expresión es entera
+                                boolean esEntera = false;
+                                if (valorFinalDimension.startsWith("TD")) {
+                                    esEntera = true;
+                                } else {
+                                    String tipo = getTipo(tokenEvaluado);
+                                    if (tipo.equals("Dec") || (tipo.isEmpty() && valorFinalDimension.startsWith("#D"))) {
+                                        esEntera = true;
+                                    }
+                                }
+
+                                if (!esEntera) {
+                                    // FALLA REGLA 4
+                                    System.out.println("error La exp no es entera: " + valorFinalDimension);
+                                    listaRegistroReglas.add(new Object[]{
+                                        tokenEvaluado[2], cveRegla4, descRegla4, 
+                                        "Error, la expresión no es entera", valorFinalDimension, ambitoActual
+                                    });
+                                    Object[] error = {547, descRegla4, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]};
+                                    listaErroresSemantico2.add(error);
+                                } else {
+                                    // CUMPLE REGLA 4
+                                    System.out.println("bien = Expresión entera válida: " + valorFinalDimension);
+                                    listaRegistroReglas.add(new Object[]{
+                                        tokenEvaluado[2], cveRegla4, descRegla4, 
+                                        "Acept", valorFinalDimension, ambitoActual
+                                    });
+
+                                    // ==========================================================
+                                    // IF ANIDADO: CHEQUEO DE REGLA 5 (RANGO DE LA DIMENSIÓN)
+                                    // ==========================================================
+                                    String cveRegla5 = "1050";
+                                    String descRegla5 = "INDICE EN RANGO";
+                                    
+                                    String[] limitesDeclarados = arregloEnUso.tArr.split(",");
+                                    int indiceActual = contadorDimensionesUso - 1;
+                                    int limiteMaximo = Integer.parseInt(limitesDeclarados[indiceActual].trim());
+
+                                    boolean enRango = false;
+
+                                    if (valorFinalDimension.startsWith("TD")) {
                                         enRango = true;
+                                    } else {
+                                        int numToken = Integer.parseInt(tokenEvaluado[0].toString());
+                                        if (numToken == -62) {
+                                            enRango = true;
+                                        } else if (numToken == -57) {
+                                            int valorConstante = Integer.parseInt(valorFinalDimension);
+                                            if (valorConstante >= 0 && valorConstante < limiteMaximo) {
+                                                enRango = true;
+                                            }
+                                        }
+                                    }
+
+                                    // Registramos el resultado de la Regla 5
+                                    if (!enRango) {
+                                        String descFalloRango = "Índice fuera de rango: se usó '" + valorFinalDimension + "'";
+                                        System.out.println("error " + descFalloRango);
+
+                                        listaRegistroReglas.add(new Object[]{
+                                            tokenEvaluado[2], cveRegla5, descRegla5, 
+                                            "Error, " + descFalloRango, valorFinalDimension, ambitoActual
+                                        });
+                                        Object[] datosErrorRango = {548, descFalloRango, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]};
+                                        listaErroresSemantico2.add(datosErrorRango);
+                                    } else {
+                                        System.out.println("bien = Índice dentro del rango permitido (" + valorFinalDimension + " < " + limiteMaximo + ")");
+
+                                        listaRegistroReglas.add(new Object[]{
+                                            tokenEvaluado[2], cveRegla5, descRegla5, 
+                                            "Acept", valorFinalDimension, ambitoActual
+                                        });
                                     }
                                 }
                             }
-
-                            // 2. Registramos el resultado de la Regla 5
-                            if (!enRango) {
-                                // FALLA REGLA 5
-                                String descFalloRango = "Índice fuera de rango: se usó '" + valorFinalDimension + 
-                                                        "'";
-                                
-                                System.out.println("error " + descFalloRango);
-
-                                listaRegistroReglas.add(new Object[]{
-                                    tokenEvaluado[2], 
-                                    cveRegla5, 
-                                    descRegla5, 
-                                    "Error, " + descFalloRango, 
-                                    valorFinalDimension, 
-                                    ambitoActual
-                                });
-                                Object[] datosErrorRango = {548, descFalloRango, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]};
-                                listaErroresSemantico2.add(datosErrorRango);
-
-                            } else {
-                                // CUMPLE REGLA 5
-                                System.out.println("bien = Índice dentro del rango permitido (" + valorFinalDimension + " < " + limiteMaximo + ")");
-
-                                listaRegistroReglas.add(new Object[]{
-                                    tokenEvaluado[2], 
-                                    cveRegla5, 
-                                    descRegla5, 
-                                    "Acept", 
-                                    valorFinalDimension, 
-                                    ambitoActual
-                                });
-                            }
-
                         }
+
+                        // Limpieza de buffer exclusiva para dimensiones de arreglos
+                        expresionActual.clear();
+                        valorDerechoStr = "";
                     }
                 }
 
-                // Limpieza de buffer
-                expresionActual.clear();
-                valorDerechoStr = "";
+                pilaSintactica.pop();
+                continue;
             }
-
-            pilaSintactica.pop();
-            continue;
-        }
 
             //821 DESPUES DE CADA COMA SE REINCIA OPERACION
             if (tope.equals("821")){
                 // Encendemos de nuevo la recolección para el siguiente "OR"
+                expresionActual.clear(); // Destruye la coma del buffer
                 leyendoOperacion = true;
                 pilaSintactica.pop();
                 continue;
@@ -1677,6 +1704,8 @@ public class AnalizadorPrincipal extends JFrame {
 
             //Se activa al cerrar el "]" (Aplica REGLA 3)
             if (tope.equals("822")){
+                nivelDeCorchetes --;
+
                 if (arregloEnUso != null && arregloEnUso.dimensionArr != null) {
         
                     // Verificamos si las dimensiones utilizadas NO son iguales a las declaradas
@@ -1684,7 +1713,7 @@ public class AnalizadorPrincipal extends JFrame {
                         
                         // PREPARACIÓN DE DATOS PARA EL ERROR
                         String cveRegla3 = "1030"; // O el CVE correcto de tu tabla para la Regla 3
-                        String descRegla3 = "La cantidad de dimensiones utilizadas debe ser igual a la declarada";
+                        String descRegla3 = "CANT. DIMENSIONES";
                         String lexemaArreglo = arregloEnUso.id;
                         int ambitoActual =  pilaContadorAmbito.peek();
                         
@@ -1715,6 +1744,7 @@ public class AnalizadorPrincipal extends JFrame {
                 // cuando encuentre el siguiente arreglo en el código.
                 arregloEnUso = null;
                 contadorDimensionesUso = 0;
+                vieneDeArreglo = false;
                 pilaSintactica.pop();
                 continue;
             }
@@ -1788,7 +1818,7 @@ public class AnalizadorPrincipal extends JFrame {
                         }
                     }
 
-                    String descRegla6 = "El switch debe ser tipo Entero o Cadena";
+                    String descRegla6 = "SWITCH DEC O CAD";
                     int ambitoActual = pilaContadorAmbito.peek();
                     if (tipoSwitchActual.equals("Dec") || tipoSwitchActual.equals("Cadena") || tipoSwitchActual.equals("Variant")) {
                         System.out.println("bien = Switch válido de tipo: " + tipoSwitchActual);
@@ -1879,7 +1909,7 @@ public class AnalizadorPrincipal extends JFrame {
                     }
 
                     // 3. COMPARAMOS Y APLICAMOS REGLA 1061 (CASE)[cite: 8]
-                    String descRegla6 = "El tipo de la exp. debe ser mismo que el de los casos";
+                    String descRegla6 = "MISMO TIPO EXP CASO";
                     int ambitoActual = pilaContadorAmbito.peek();
 
                     // CASO A: El switch es Variant o venía con Error
@@ -1921,7 +1951,7 @@ public class AnalizadorPrincipal extends JFrame {
                             System.out.println("error " + errorMsg);
                             listaRegistroReglas.add(new Object[]{
                                 tokenEvaluadoCase[2], "1061", descRegla6, 
-                                "Error, el tipo del caso no coincide", valorFinalCase,ambitoActual
+                                "Error", valorFinalCase,ambitoActual
                             });
                             listaErroresSemantico2.add(new Object[]{551, errorMsg, valorFinalCase, "Semantico 2", tokenEvaluadoCase[2]});
                         }
@@ -1938,7 +1968,7 @@ public class AnalizadorPrincipal extends JFrame {
                 Identificador idVar = buscarEnTabla(lexemaVar);
                 
                 String cveRegla7 = "1070"; // TODO: Ajusta este CVE a tu tabla de reglas
-                String descRegla7 = "El operador unario solo puede ser utilizado con valores enteros";
+                String descRegla7 = "UNARIO CON ENTERO";
                 int ambitoActual = pilaContadorAmbito.peek(); 
                 
                 boolean esEntero = false;
@@ -1947,6 +1977,12 @@ public class AnalizadorPrincipal extends JFrame {
                 //CHECAR SI OTROS TIPOS MAS
                 if (idVar != null) {
                     if (idVar.tipo.startsWith("Dec")) {
+                        esEntero = true;
+                    }
+                }
+
+                else{
+                    if (lexemaVar.startsWith("#D")) {
                         esEntero = true;
                     }
                 }
@@ -2042,7 +2078,7 @@ public class AnalizadorPrincipal extends JFrame {
 
                     int ambitoActual = pilaContadorAmbito.peek(); 
                     String cveRegla7 = "1070"; // TODO: Ajusta este CVE a tu tabla de reglas
-                    String descRegla7 = "El operador unario solo puede ser utilizado con valores enteros";
+                    String descRegla7 = "UNARIO CON ENTERO";
                     // ============================================================
                     // VALIDACIÓN PARA '!' (Acción 827 - Debe ser Booleano)
                     // ============================================================
@@ -2092,26 +2128,94 @@ public class AnalizadorPrincipal extends JFrame {
                 pilaSintactica.pop();
                 continue;
             }
-            if (tope.equals("830")){
-                leyendoOperacion = false;
-                if (!expresionActual.isEmpty()) {
-                    String idColeccion = (String) expresionActual.get(0)[1];
-                    Identificador objIterado = buscarEnTabla(idColeccion);
-                    String lexema = idIteradorFor + " : " + idColeccion;
-                    int ambito = pilaContadorAmbito.peek();
 
-                    if (objIterado != null) {
-                        if (objIterado.tipo.equals("Cadena")) {
-                            listaRegistroReglas.add(new Object[]{tokenActual[2], "1083", "Manejo de cadenas", "Acept", lexema, ambito});
-                        } else if (objIterado.clase != null && objIterado.clase.equals("ARR")) {
+            if (tope.equals("830")) {
+                leyendoOperacion = false;
+                
+                // =================================================================
+                // 1. RESCATE MÁGICO DEL VALOR 2 (Evita que ignore arreglos con índice)
+                // =================================================================
+                String idColeccion = "";
+                if (!expresionActual.isEmpty()) {
+                    idColeccion = (String) expresionActual.get(0)[1]; 
+                } else {
+                    idColeccion = idIzquierdoStr; // Rescate de emergencia para #DLista[1]
+                }
+
+                // 2. Ahora sí, si logramos atrapar el Valor 2, evaluamos las reglas
+                if (!idColeccion.isEmpty()) { 
+                    String lexema = idIteradorFor + " : " + idColeccion;
+                    int ambito = pilaContadorAmbito.isEmpty() ? 0 : pilaContadorAmbito.peek();
+
+                    // Buscamos ambos identificadores en la tabla
+                    Identificador objIterador = buscarEnTabla(idIteradorFor); // Valor 1
+                    Identificador objColeccion = buscarEnTabla(idColeccion);  // Valor 2
+
+                    // Obtenemos los tipos y clases (con respaldos)
+                    String tipo1 = "";
+                    if (objIterador != null) tipo1 = objIterador.tipo;
+                    else if (idIteradorFor.startsWith("#D")) tipo1 = "Decimal";
+                    else if (idIteradorFor.startsWith("TV")) tipo1 = "Variant";
+                    
+                    String tipo2 = "";
+                    String clase2 = "VAR";
+                    if (objColeccion != null) {
+                        tipo2 = objColeccion.tipo;
+                        clase2 = objColeccion.clase != null ? objColeccion.clase : "VAR";
+                    } else if (idColeccion.startsWith("TV")) {
+                        tipo2 = "Variant";
+                    } else if (idColeccion.startsWith("@C")) {
+                        tipo2 = "Cadena";
+                    }
+
+                    // Normalizamos
+                    if (tipo1.equals("Dec")) tipo1 = "Decimal";
+                    if (tipo2.equals("Dec")) tipo2 = "Decimal";
+                    if (tipo1.isEmpty()) tipo1 = "Variant";
+                    if (tipo2.isEmpty()) tipo2 = "Variant";
+
+                    // ==========================================================
+                    // EVALUACIÓN DE LAS REGLAS 1083 Y 1084 DEL FOREACH
+                    // ==========================================================
+
+                    if (tipo1.equals("Variant") && tipo2.equals("Variant")) {
+                        System.out.println("bien = Foreach válido (Ambos son Variant)");
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1083/1084", "Manejo de cadenas/arreglos", "Acept", lexema, ambito});
+                    }
+                    else if (tipo2.equals("Variant")) {
+                        System.out.println("bien = Foreach válido (Valor 2 es Variant, se infiere arreglo de tipo " + tipo1 + ")");
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1084", "Manejo de arreglos", "Acept", lexema, ambito});
+                    }
+                    // AQUI EVALUAMOS ARR ANTES QUE CADENA (¡Bien hecho!)
+                    else if (clase2.equals("ARR")) {
+                        if (tipo1.equals(tipo2)) { 
+                            System.out.println("bien = Foreach válido de Arreglo (tipos coinciden: " + tipo1 + ")");
                             listaRegistroReglas.add(new Object[]{tokenActual[2], "1084", "Manejo de arreglos", "Acept", lexema, ambito});
                         } else {
-                            String errorMsg = "El iterador '" + idColeccion + "' no es una Cadena ni un Arreglo";
+                            String errorMsg = "Regla 1084: El valor 1 debe ser del mismo tipo que el arreglo. Valor 1: " + tipo1 + ", Valor 2: " + tipo2;
                             System.out.println("error " + errorMsg);
-                            listaRegistroReglas.add(new Object[]{tokenActual[2], "1083/1084", "Manejo de cadenas/arreglos", "Error", lexema, ambito});
+                            listaRegistroReglas.add(new Object[]{tokenActual[2], "1084", "Manejo de arreglos", "Error", lexema, ambito});
+                            listaErroresSemantico2.add(new Object[]{554, errorMsg, lexema, "Semantico 2", tokenActual[2]});
+                        }
+                    }
+                    else if (tipo2.equals("Cadena")) {
+                        if (tipo1.equals("Decimal")) { 
+                            System.out.println("bien = Foreach válido de Cadena con iterador Entero");
+                            listaRegistroReglas.add(new Object[]{tokenActual[2], "1083", "Manejo de cadenas", "Acept", lexema, ambito});
+                        } else {
+                            String errorMsg = "Regla 1083: Si el valor 2 es Cadena, el valor 1 debe ser Entero (#D). Se encontró: " + tipo1;
+                            System.out.println("error " + errorMsg);
+                            listaRegistroReglas.add(new Object[]{tokenActual[2], "1083", "Manejo de cadenas", "Error", lexema, ambito});
                             listaErroresSemantico2.add(new Object[]{553, errorMsg, lexema, "Semantico 2", tokenActual[2]});
                         }
                     }
+                    else {
+                        String errorMsg = "El valor a iterar '" + idColeccion + "' no es una Cadena, un Arreglo, ni Variant";
+                        System.out.println("error " + errorMsg);
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1083/1084", "Manejo de cadenas/arreglos", "Error", lexema, ambito});
+                        listaErroresSemantico2.add(new Object[]{555, errorMsg, lexema, "Semantico 2", tokenActual[2]});
+                    }
+
                     expresionActual.clear();
                 }
                 pilaSintactica.pop();
@@ -2257,7 +2361,392 @@ public class AnalizadorPrincipal extends JFrame {
                 pilaSintactica.pop();
                 continue;
             }
-            
+
+            // =====================================================================
+            // Acción 834: Validación exclusiva para condiciones (if, while, do-while)
+            // =====================================================================
+            if (tope.equals("834")) {
+                leyendoOperacion = false;
+                
+                if (!expresionActual.isEmpty()) {
+                    String valorFinalParaError = "";
+                    
+                    // 1. Resolvemos la expresión matemática/lógica de la condición
+                    if (expresionActual.size() == 1) {
+                        valorFinalParaError = (String) expresionActual.get(0)[1];
+                    } else {
+                        List<Object[]> prefijaDer = convertirAPrefijo(expresionActual);
+                        indiceGlobalPrefijo = 0;
+                        int indexInicio = listaCuadruplos.size();
+                        generarCuadruplosRecursivo(prefijaDer);
+                        
+                        if (listaCuadruplos.size() > indexInicio) {
+                            String[] ultimoCuad = listaCuadruplos.get(listaCuadruplos.size() - 1);
+                            if (ultimoCuad.length > 3 && ultimoCuad[3] != null && ultimoCuad[3].startsWith("T")) {
+                                valorFinalParaError = ultimoCuad[3];
+                            }
+                        }
+                        if (valorFinalParaError.isEmpty() && valorDerechoStr != null && !valorDerechoStr.isEmpty()) {
+                            valorFinalParaError = valorDerechoStr;
+                        }
+                    }
+
+                    // 2. Determinamos si el resultado es Lógico
+                    boolean esLogico = false;
+                    if (valorFinalParaError.startsWith("TB")) {
+                        esLogico = true;
+                    } else if (valorFinalParaError.equals("true") || valorFinalParaError.equals("false")) {
+                        esLogico = true;
+                    } else {
+                        Identificador idVar = buscarEnTabla(valorFinalParaError);
+                        if (idVar != null && (idVar.tipo.equals("Boolean") || idVar.tipo.equals("TBool") || idVar.tipo.equals("Booleana"))) {
+                            esLogico = true;
+                        }
+                    }
+
+                    // 3. Asignamos CVE según la estructura
+                    String cveRegla = "";
+                    if (estructuraEnUso.equals("if")) cveRegla = "1010";
+                    else if (estructuraEnUso.equals("elseif")) cveRegla = "1011";
+                    else if (estructuraEnUso.equals("while")) cveRegla = "1012";
+                    else if (estructuraEnUso.equals("do")) cveRegla = "1013";
+                    
+                    System.out.println("LA ESTRUCTURA ES: " + estructuraEnUso);
+                    String descRegla = "CONDICION ES BOOL";
+                    int ambitoActual = pilaContadorAmbito.isEmpty() ? 0 : pilaContadorAmbito.peek();
+
+                    // 4. Validamos la Regla 1
+                    if (!esLogico) {
+                        System.out.println("error Incompatibilidad de tipos: " + descRegla + ". " + valorFinalParaError);
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], cveRegla, descRegla, "Error", valorFinalParaError, ambitoActual});
+
+                        Object[] error = {549, descRegla, valorFinalParaError, "Semantico 2", tokenActual[2]};
+                        listaErroresSemantico2.add(error);
+                    } else {
+                        System.out.println("bien = Condición lógica válida: " + valorFinalParaError);
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], cveRegla, descRegla, "Acept", valorFinalParaError, ambitoActual});
+                    }
+
+                    // 5. Limpieza profunda obligatoria
+                    expresionActual.clear();
+                    valorDerechoStr = "";
+                }
+                
+                pilaSintactica.pop();
+                continue;
+            }
+            if (tope.equals("835")){
+                idMetodoActual = ultimoIdVisto;
+                char inicial = idMetodoActual.charAt(0);
+                int ambitoActual = pilaContadorAmbito.isEmpty() ? 0 : pilaContadorAmbito.peek();
+
+                // Si empieza con símbolo, es Función (Regla 12)
+                if (inicial == '#' || inicial == '@' || inicial == '$' || inicial == '%' || inicial == '¡' || inicial == '¿') {
+                    enFuncion = true;
+                    enProcedimiento = false;
+                    
+                    // Usamos startsWith para detectar los numéricos y asignar el string exacto
+                    if (idMetodoActual.startsWith("#B")) tipoMetodoActual = "Bin";
+                    else if (idMetodoActual.startsWith("#D")) tipoMetodoActual = "Dec";
+                    else if (idMetodoActual.startsWith("#O")) tipoMetodoActual = "Oct";
+                    else if (idMetodoActual.startsWith("#X")) tipoMetodoActual = "Hex";
+                    
+                    // Asignación del resto de tipos basándose en tu getTipo()
+                    else if (idMetodoActual.startsWith("@")) tipoMetodoActual = "Cadena";
+                    else if (idMetodoActual.startsWith("$")) tipoMetodoActual = "Real";
+                    else if (idMetodoActual.startsWith("%")) tipoMetodoActual = "Variant";
+                    else if (idMetodoActual.startsWith("¡")) tipoMetodoActual = "Boolean";
+                    else if (idMetodoActual.startsWith("¿")) tipoMetodoActual = "exp";
+                    
+                    System.out.println("bien = Es clase función: " + idMetodoActual + " (Tipo esperado: " + tipoMetodoActual + ")");
+                    listaRegistroReglas.add(new Object[]{tokenActual[2], "1120", "El ID debe ser clase función", "Acept", idMetodoActual, ambitoActual});
+}
+                // Si empieza con letra, es Procedimiento (Regla 11)[cite: 11]
+                else {
+                    enProcedimiento = true;
+                    enFuncion = false;
+                    tipoMetodoActual = "Void";
+                    
+                    System.out.println("bien = Es clase procedimiento: " + idMetodoActual);
+                    listaRegistroReglas.add(new Object[]{tokenActual[2], "1110", "ID clase procedimiento", "Acept", idMetodoActual, ambitoActual});
+                }
+                
+                encontroReturn = false;
+                pilaSintactica.pop();
+                continue;
+            }
+
+            // Acción 836: Prepara la lectura de la expresión del return
+            if (tope.equals("836")){
+                expresionActual.clear();
+                leyendoOperacion = true;
+                pilaSintactica.pop();
+                continue;
+            }
+
+            // Acción 837: Evalúa el tipo de retorno y valida Regla 14 y 1131
+            if (tope.equals("837")){
+                leyendoOperacion = false;
+                int ambitoActual = pilaContadorAmbito.isEmpty() ? 0 : pilaContadorAmbito.peek();
+                
+                // Si es Procedimiento y tiene return, falla la Regla 14[cite: 13]
+                if (enProcedimiento) {
+                    encontroReturn = true;
+                    String errorMsg = "Un procedimiento no debe de tener retorno";
+                    System.out.println("error " + errorMsg);
+                    listaRegistroReglas.add(new Object[]{tokenActual[2], "1140", "NO RETURN DE PROCEDIMIENTO", "Error", "return", ambitoActual});
+                    listaErroresSemantico2.add(new Object[]{559, errorMsg, "return", "Semantico 2", tokenActual[2]});
+                } 
+                // Si es Función, validamos que el tipo coincida (Regla 1131)[cite: 13]
+                else if (enFuncion) {
+                    encontroReturn = true;
+                    
+                    String valorFinal = "";
+                    Object[] tokenEvaluado = null;
+                    
+                    if (!expresionActual.isEmpty()) {
+                        if (expresionActual.size() == 1) {
+                            tokenEvaluado = expresionActual.get(0);
+                            valorFinal = (String) tokenEvaluado[1];
+                        } else {
+                            List<Object[]> prefijaDer = convertirAPrefijo(expresionActual);
+                            indiceGlobalPrefijo = 0;
+                            int indexInicio = listaCuadruplos.size();
+                            generarCuadruplosRecursivo(prefijaDer);
+                            
+                            if (listaCuadruplos.size() > indexInicio) {
+                                String[] ultimoCuad = listaCuadruplos.get(listaCuadruplos.size() - 1);
+                                if (ultimoCuad.length > 3 && ultimoCuad[3] != null && ultimoCuad[3].startsWith("T")) {
+                                    valorFinal = ultimoCuad[3];
+                                }
+                            }
+                            if (valorFinal.isEmpty() && valorDerechoStr != null && !valorDerechoStr.isEmpty()) valorFinal = valorDerechoStr;
+                            int cod = 0; // Por defecto
+
+                            // 1. Asignamos el código numérico según el prefijo del temporal[cite: 14]
+                            if (valorFinal.startsWith("TBI")) { 
+                                cod = -61; // Binario[cite: 14]
+                            } else if (valorFinal.startsWith("TD")) {
+                                cod = -62; // Decimal (Entero)[cite: 14]
+                            } else if (valorFinal.startsWith("TO")) {
+                                cod = -63; // Octal[cite: 14]
+                            } else if (valorFinal.startsWith("TH")) {
+                                cod = -64; // Hexadecimal[cite: 14]
+                            } else if (valorFinal.startsWith("TR")) {
+                                cod = -65; // Real[cite: 14]
+                            } else if (valorFinal.startsWith("TE")) {
+                                cod = -66; // Exponencial[cite: 14]
+                            } else if (valorFinal.startsWith("TC")) {
+                                cod = -60; // Cadena[cite: 14]
+                            } else if (valorFinal.startsWith("TB")) { // ¡TB debe ir DESPUÉS de TBI!
+                                cod = -67; // Booleano (Lógico)[cite: 14]
+                            } else if (valorFinal.startsWith("TV")) {
+                                cod = 0;   // Variant (Ajusta si tienes un código específico para Variant en tu léxico)
+                            }
+
+                            tokenEvaluado = new Object[]{cod, valorFinal, tokenActual[2]};
+                        }
+                    }
+                    
+                    String tipoRetorno = getTipo(tokenEvaluado);
+                    if (tipoRetorno.isEmpty()) {
+                        Identificador id = buscarEnTabla(valorFinal);
+                        if (id != null) tipoRetorno = id.tipo;
+                    }
+                    if (tipoRetorno.isEmpty()) tipoRetorno = "Variant";
+                    // Regla 1131: Comparación de tipos[cite: 13]
+                    if (tipoMetodoActual.equals(tipoRetorno) || tipoMetodoActual.equals("Variant")|| tipoRetorno.equals("Variant")) {
+                        System.out.println("bien = Tipo de retorno coincide: " + tipoRetorno);
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1131", "Tipo de retorno igual", "Acept", "return " + valorFinal, ambitoActual});
+                    } else {
+                        String errorMsg = "El tipo de retorno (" + tipoRetorno + ") no coincide con la función (" + tipoMetodoActual + ")";
+                        System.out.println("error " + errorMsg);
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1131", "Tipo de retorno igual", "Error", "return " + valorFinal, ambitoActual});
+                        listaErroresSemantico2.add(new Object[]{560, errorMsg, "return " + valorFinal, "Semantico 2", tokenActual[2]});
+                    }
+                }
+                
+                expresionActual.clear();
+                valorDerechoStr = "";
+                pilaSintactica.pop();
+                continue;
+            }
+            // =====================================================================
+            // Acción 838: Inicia la llamada a la función
+            // =====================================================================
+            if (tope.equals("838")) {
+                // ultimoIdVisto guarda el nombre de la función justo antes de abrir el '('
+                funcionLlamadaActual = ultimoIdVisto; 
+                contadorArgumentos = 0;
+                errorRegla15 = false;
+                
+                expresionActual.clear();
+                leyendoOperacion = true;
+                pilaSintactica.pop();
+                continue;
+            }
+
+            // =====================================================================
+            // Acción 839: Evaluación de un argumento individual (Reglas 15 y 16)
+            // =====================================================================
+            if (tope.equals("839")) {
+                
+                // ESCUDO: Solo ejecutamos esto si venimos de una llamada a función
+                if (!funcionLlamadaActual.isEmpty() && nivelDeCorchetes == 0) {
+                    leyendoOperacion = false;
+                    contadorArgumentos++;
+                    int ambitoActual = pilaContadorAmbito.isEmpty() ? 0 : pilaContadorAmbito.peek();
+
+                    Identificador funcObj = buscarEnTabla(funcionLlamadaActual);
+
+                    if (funcObj != null) {
+                        System.out.println("funcObj es " + funcObj);
+                        int totalParamsDeclarados = 0; 
+                            if (funcObj.numeroPar != null) { // Si usas Integer, validamos nulos. Si usas int primitivo, omite este if.
+                                totalParamsDeclarados = funcObj.numeroPar;
+                            }
+                        // ----------------------------------------------------
+                        // REGLA 15: CANTIDAD DE PARÁMETROS
+                        // ----------------------------------------------------
+                        if (contadorArgumentos > totalParamsDeclarados) {
+                            errorRegla15 = true; // Bloquea la regla 16 para este y los siguientes
+                            String errorMsg = "Se enviaron más argumentos (" + contadorArgumentos + ") de los declarados (" + totalParamsDeclarados + ")";
+                            System.out.println("error " + errorMsg);
+                            listaRegistroReglas.add(new Object[]{tokenActual[2], "1150", "PARAMETROS DECLARADOS", "Error", funcionLlamadaActual, ambitoActual});
+                            listaErroresSemantico2.add(new Object[]{562, errorMsg, funcionLlamadaActual, "Semantico 2", tokenActual[2]});
+                        } else {
+                            System.out.println("bien = Parámetro " + contadorArgumentos + " dentro del límite de " + funcionLlamadaActual);
+                            listaRegistroReglas.add(new Object[]{tokenActual[2], "1150", "PARAMETROS DECLARADOS", "Acept", funcionLlamadaActual, ambitoActual});
+                        }
+
+                        // ----------------------------------------------------
+                        // REGLA 16: TIPO DE PARÁMETROS
+                        // ----------------------------------------------------
+                        if (!errorRegla15) {
+                            Identificador paramEsperado = null;
+                            for (Identificador id : registroIdentificadores) { 
+                                if (id.clase != null && id.clase.equals("PAR") &&
+                                    id.tamañoPar != null && id.tamañoPar.equals(funcionLlamadaActual) &&
+                                    id.numeroPar == contadorArgumentos) {
+                                    paramEsperado = id;
+                                    break;
+                                }
+                            }
+
+                            if (paramEsperado != null) {
+                                String tipoEsperado = paramEsperado.tipo;
+                                
+                                String valorFinal = "";
+                                Object[] tokenEvaluado = null;
+
+                                if (!expresionActual.isEmpty()) {
+
+                                    // ==========================================================
+                                    // NUEVO PARCHE: Eliminar la coma intrusa antes de evaluar
+                                    // ==========================================================
+                                    // String primerLexema = (String) expresionActual.get(0)[1];
+                                    // if (primerLexema.equals(",")) {
+                                    //     expresionActual.remove(0); // Expulsamos la coma
+                                    // }
+                                    // ==========================================================
+                                    if (expresionActual.size() == 1) {
+                                        tokenEvaluado = expresionActual.get(0);
+                                        valorFinal = (String) tokenEvaluado[1];
+                                    } else {
+                                        List<Object[]> prefijaDer = convertirAPrefijo(expresionActual);
+                                        indiceGlobalPrefijo = 0;
+                                        int indexInicio = listaCuadruplos.size();
+                                        generarCuadruplosRecursivo(prefijaDer);
+
+                                        if (listaCuadruplos.size() > indexInicio) {
+                                            String[] ultimoCuad = listaCuadruplos.get(listaCuadruplos.size() - 1);
+                                            if (ultimoCuad.length > 3 && ultimoCuad[3] != null && ultimoCuad[3].startsWith("T")) {
+                                                valorFinal = ultimoCuad[3];
+                                            }
+                                        }
+                                        if (valorFinal.isEmpty() && valorDerechoStr != null && !valorDerechoStr.isEmpty()) valorFinal = valorDerechoStr;
+                                    }
+
+                                    // Inferimos el tipo
+                                    String tipoArgumento = "";
+                                    if (valorFinal.startsWith("TBI")) tipoArgumento = "Bin";
+                                    else if (valorFinal.startsWith("TD")) tipoArgumento = "Dec";
+                                    else if (valorFinal.startsWith("TO")) tipoArgumento = "Oct";
+                                    else if (valorFinal.startsWith("TH")) tipoArgumento = "Hex";
+                                    else if (valorFinal.startsWith("TR")) tipoArgumento = "Real";
+                                    else if (valorFinal.startsWith("TE")) tipoArgumento = "exp";
+                                    else if (valorFinal.startsWith("TC")) tipoArgumento = "Cadena";
+                                    else if (valorFinal.startsWith("TB")) tipoArgumento = "Boolean";
+                                    else if (valorFinal.startsWith("TV")) tipoArgumento = "Variant";
+
+                                    if (tipoArgumento.isEmpty()) {
+                                        Identificador argVar = buscarEnTabla(valorFinal);
+                                        if (argVar != null) tipoArgumento = argVar.tipo;
+                                        else if (tokenEvaluado != null) tipoArgumento = getTipo(tokenEvaluado);
+                                    }
+
+                                    if (tipoEsperado.equals("Decimal")) tipoEsperado = "Dec";
+                                    if (tipoArgumento.equals("Decimal")) tipoArgumento = "Dec";
+                                    if (tipoEsperado.equals("Booleana") || tipoEsperado.equals("TBool")) tipoEsperado = "Boolean";
+                                    if (tipoArgumento.equals("Booleana") || tipoArgumento.equals("TBool")) tipoArgumento = "Boolean";
+
+                                    String lexemaEval = paramEsperado.id + " = " + valorFinal;
+
+                                    if (tipoEsperado.equals(tipoArgumento) || tipoEsperado.equals("Variant") || tipoArgumento.equals("Variant")) {
+                                        System.out.println("bien = Tipo de argumento coincide: " + tipoArgumento);
+                                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1160", "PARAMETROS DE TIPO", "Acept", lexemaEval, ambitoActual});
+                                    } else {
+                                        String errorMsg = "El argumento (" + tipoArgumento + ") no coincide con el parámetro esperado (" + tipoEsperado + ")";
+                                        System.out.println("error " + errorMsg);
+                                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1160", "PARAMETROS DE TIPO", "Error", lexemaEval, ambitoActual});
+                                        listaErroresSemantico2.add(new Object[]{563, errorMsg, lexemaEval, "Semantico 2", tokenActual[2]});
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    expresionActual.clear();
+                    valorDerechoStr = "";
+                    leyendoOperacion = true; 
+                }
+                
+                pilaSintactica.pop();
+                continue;
+            }
+
+            // =====================================================================
+            // Acción 840: Validación final al cerrar paréntesis (Faltan argumentos)
+            // =====================================================================
+            if (tope.equals("840")) {
+                leyendoOperacion = false;
+                int ambitoActual = pilaContadorAmbito.isEmpty() ? 0 : pilaContadorAmbito.peek();
+
+                Identificador funcObj = buscarEnTabla(funcionLlamadaActual);
+                if (funcObj != null && !errorRegla15) {
+                    System.out.println("final es "+funcObj);
+                    int totalParamsDeclarados = 0;
+                    if (funcObj.numeroPar != null) {
+                        totalParamsDeclarados = funcObj.numeroPar;
+                    }
+                    
+                    // REGLA 15 FINAL: Revisamos si nos quedamos cortos de argumentos[cite: 14]
+                    if (contadorArgumentos < totalParamsDeclarados) {
+                        String errorMsg = "Faltan argumentos. Se esperaban " + totalParamsDeclarados + ", pero se enviaron " + contadorArgumentos;
+                        System.out.println("error " + errorMsg);
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1150", "PARAMETROS DECLARADOS", "Error", funcionLlamadaActual, ambitoActual});
+                        listaErroresSemantico2.add(new Object[]{564, errorMsg, funcionLlamadaActual, "Semantico 2", tokenActual[2]});
+                    }
+                }
+
+                // Limpiamos las variables globales
+                funcionLlamadaActual = "";
+                contadorArgumentos = 0;
+                errorRegla15 = false;
+                expresionActual.clear();
+                pilaSintactica.pop();
+                continue;
+            }
+
             if (tope.equals("810")){
                 claseActual = ""; // Regresa a modo "Uso de variable" (no declaración)
                 tipoPersonalizado = "";
@@ -2296,7 +2785,11 @@ public class AnalizadorPrincipal extends JFrame {
             }
 
             if (tope.equals("811")){
-                idIzquierdoStr = ultimoIdVisto;
+
+                if (!vieneDeArreglo) {
+                    idIzquierdoStr = ultimoIdVisto;
+                }
+                vieneDeArreglo = false; // Apagamos la bandera
                 leyendoOperacion = true;
                 expresionActual.clear();
                 lineaOperacionActual = (int) tokenActual[2]; // Asumiendo que [2] es la línea
@@ -2312,36 +2805,37 @@ public class AnalizadorPrincipal extends JFrame {
                 if (!EsDeclaracion) {
                     Identificador idObj = buscarEnTabla(idIzquierdoStr);
                     String cveRegla9 = "1090";
-                    String descRegla9 = "El identificador debe ser compatible para recibir un valor";
+                    String descRegla9 = "ID ES COMPATIBLE";
                     int ambitoActual = pilaContadorAmbito.isEmpty() ? 0 : pilaContadorAmbito.peek();
 
-                    if (idObj != null) {
-                        // Obtenemos la clase (si viene nula asumimos que es VAR por seguridad)
-                        String claseId = (idObj.clase != null && !idObj.clase.isEmpty()) ? idObj.clase.toUpperCase() : "VAR";
+                    // 1. Asumimos "VAR" por defecto. Solo cambiamos si el ID existe y tiene una clase definida.
+                    String claseId = "VAR";
+                    if (idObj != null && idObj.clase != null && !idObj.clase.isEmpty()) {
+                        claseId = idObj.clase.toUpperCase();
+                    }
 
-                        // Si es FUNC o CONST da error. Si es VAR, PARAM o ARR es Acept.
-                        if (claseId.equals("FUNC") || claseId.equals("CONST")) {
-                            // FALLA REGLA 9
-                            String errorMsg = "No se puede asignar a clase " + claseId;
-                            System.out.println("error " + errorMsg + " -> " + idIzquierdoStr);
-                            
-                            listaRegistroReglas.add(new Object[]{
-                                tokenActual[2], cveRegla9, descRegla9, 
-                                "Error", idIzquierdoStr, ambitoActual
-                            });
-                            listaErroresSemantico2.add(new Object[]{
-                                558, errorMsg, idIzquierdoStr, "Semantico 2", tokenActual[2]
-                            });
-                            
-                        } else {
-                            // CUMPLE REGLA 9
-                            System.out.println("bien = Clase válida (" + claseId + ") para asignación: " + idIzquierdoStr);
-                            
-                            listaRegistroReglas.add(new Object[]{
-                                tokenActual[2], cveRegla9, descRegla9, 
-                                "Acept", idIzquierdoStr, ambitoActual
-                            });
-                        }
+                    // 2. Evaluamos la clase obtenida (o la asumida)
+                    if (claseId.equals("FUNC") || claseId.equals("CONST")) {
+                        // FALLA REGLA 9
+                        String errorMsg = "No se puede asignar a clase " + claseId;
+                        System.out.println("error " + errorMsg + " -> " + idIzquierdoStr);
+                        
+                        listaRegistroReglas.add(new Object[]{
+                            tokenActual[2], cveRegla9, descRegla9, 
+                            "Error", idIzquierdoStr, ambitoActual
+                        });
+                        listaErroresSemantico2.add(new Object[]{
+                            558, errorMsg, idIzquierdoStr, "Semantico 2", tokenActual[2]
+                        });
+                        
+                    } else {
+                        // CUMPLE REGLA 9
+                        System.out.println("bien = Clase válida (" + claseId + ") para asignación: " + idIzquierdoStr);
+                        
+                        listaRegistroReglas.add(new Object[]{
+                            tokenActual[2], cveRegla9, descRegla9, 
+                            "Acept", idIzquierdoStr, ambitoActual
+                        });
                     }
                 }
                 // ==========================================================
@@ -2352,7 +2846,6 @@ public class AnalizadorPrincipal extends JFrame {
             //CHECAR QUE NO VAYA POR AQUI CUANDO ESTAMOS EN FOR
             if (tope.equals("812")) {
                 leyendoOperacion = false;
-                
                 // Convertimos a prefijo el lado derecho
                 List<Object[]> prefijaDer = convertirAPrefijo(expresionActual);
                 
@@ -2360,7 +2853,7 @@ public class AnalizadorPrincipal extends JFrame {
                 List<Object[]> infijaCompleta = new ArrayList<>();
                 List<Object[]> prefijaCompleta = new ArrayList<>();
                 idIzquierdoStr = (tokenIzquierdo != null) ? (String) tokenIzquierdo[1] : "";
-
+                System.out.println(idIzquierdoStr + "  tok asig "+tokenAsignacion) ;
                 // Si la operación provino de una asignación (ej. x = 5), agregamos el lado izquierdo
                 if (tokenIzquierdo != null && tokenAsignacion != null) {
                     // Armar Infija completa: [id] [=] [a] [+] [b]
@@ -2385,6 +2878,7 @@ public class AnalizadorPrincipal extends JFrame {
                 operacionesPrefijasTokens.add(prefijaCompleta);
 
                 indiceGlobalPrefijo = 0; // <-- CRÍTICO: Reiniciar el contador
+                System.out.println("expresion actual " + prefijaCompleta);
 
                 int indexInicioCuadruplos = listaCuadruplos.size(); // Contamos cuántos hay antes
                 // 1. Guardamos el estado exacto de los contadores ANTES de la línea
@@ -2411,63 +2905,6 @@ public class AnalizadorPrincipal extends JFrame {
                 } else if (!ultimoTemporal.isEmpty()) {
                     asignacionFinal = "Eval -> " + ultimoTemporal;
                 }
-
-                // ========================================================
-                // NUEVO: Validación exclusiva si NO hay lado izquierdo (Es decir, es una condición)
-                // ========================================================
-                if (idIzquierdoStr.isEmpty()) { 
-                    boolean esLogico = false;
-                    String valorFinalParaError = "";
-
-                    // Escenario A: Fue una ecuación (Ej. TB1)
-                    if (!ultimoTemporal.isEmpty()) {
-                        valorFinalParaError = ultimoTemporal;
-                        if (ultimoTemporal.startsWith("TB")) {
-                            esLogico = true;
-                        }
-                    } 
-                    // Escenario B: Valor directo (Ej. true, o ¡Bflag)
-                    else if (valorDerechoStr != null && !valorDerechoStr.isEmpty()) {
-                        valorFinalParaError = valorDerechoStr;
-                        if (valorDerechoStr.equals("true") || valorDerechoStr.equals("false")) {
-                            esLogico = true;
-                        } else {
-                            Identificador idVar = buscarEnTabla(valorDerechoStr);
-                            if (idVar != null && (idVar.tipo.equals("Boolean") || idVar.tipo.equals("TBool"))) {
-                                esLogico = true;
-                            }
-                        }
-                    }
-                    // ==========================================================
-                    // REGISTRO DE REGLA 1
-                    // ==========================================================
-                    String cveRegla = "";
-                    if (estructuraEnUso.equals("if")) cveRegla = "1010";
-                    else if (estructuraEnUso.equals("elseif")) cveRegla = "1011";
-                    else if (estructuraEnUso.equals("while")) cveRegla = "1012";
-                    else if (estructuraEnUso.equals("do")) cveRegla = "1013";
-
-                    String descRegla = "La condición evaluada debe ser de tipo Lógico (Booleana)";
-                    int ambitoActual =  pilaContadorAmbito.peek();
-
-                    // Si falló la comprobación, disparamos error semántico
-                    if (parteForClasico != 1 && parteForClasico != 3) {
-                        if (!esLogico) {
-                            System.out.println("error Incompatibilidad de tipos: La condición evaluada debe ser de tipo Lógico (Booleana).  "+valorFinalParaError);
-                            listaRegistroReglas.add(new Object[]{tokenActual[2],cveRegla,descRegla,"Error, la condición evaluada debe ser de tipo Lógico ",valorFinalParaError,ambitoActual});
-
-                            Object[] error = {549, descRegla, valorFinalParaError, "Semantico 2", tokenActual[2]};
-                            listaErroresSemantico2.add(error);
-                        }
-                        else {
-                            System.out.println("bien = " + valorFinalParaError);
-                            listaRegistroReglas.add(new Object[]{tokenActual[2],cveRegla,descRegla,"Acept",valorFinalParaError,ambitoActual});
-
-                        }
-                    }
-                    
-                }
-                // ========================================================
 
                 // Guardamos: [Linea, ArregloContadores, AsignacionFinal]
                 if (!ignorarParaExcel){
@@ -2520,7 +2957,9 @@ public class AnalizadorPrincipal extends JFrame {
                     //System.out.println("else de " + tokenActual[1] + " es "+tope);
                     if (terminalActual.equals("id")) {
                         //System.out.println("token izquierdo es " +tokenActual[1]);
-                        tokenIzquierdo = tokenActual;
+                        if (!vieneDeArreglo){
+                            tokenIzquierdo = tokenActual;
+                        }
                     } else if (terminalActual.equals("=") || terminalActual.equals("+=") || 
                         terminalActual.equals("-=") || terminalActual.equals("*=") || 
                         terminalActual.equals("/=") || terminalActual.equals("%=") || 
@@ -2607,7 +3046,7 @@ public class AnalizadorPrincipal extends JFrame {
                         // REGLA 10: Un ID debe ser declarado antes de ser utilizado
                         // =================================================================
                         String cveRegla10 = "1100"; // Asegúrate de poner el CVE correcto
-                        String descRegla10 = "Un ID debe ser declarado antes de ser utilizado";
+                        String descRegla10 = "ID DECLARADO";
                         
                         if (!existe) {
                             // FALLA REGLA 10
@@ -2914,7 +3353,7 @@ public class AnalizadorPrincipal extends JFrame {
             int tipoValor = Integer.parseInt(nodoDer[1]);
             String val1 = nodoIzq[0];
             String val2 = nodoDer[0];
-            
+            System.out.println(val1 + " y val2 " + val2);
             boolean esCompatible = false;
 
             // A) Asignación Directa (=)
@@ -2948,7 +3387,7 @@ public class AnalizadorPrincipal extends JFrame {
                 cveRegla2 = "1022"; // Asignación /=, *=, -=, %=, etc.[cite: 5]
             }
 
-            String descRegla2 = "El lado izquierdo de la asignación debe ser compatible con el derecho";
+            String descRegla2 = "LADO IZQ. IGUAL A DER.";
             String lexemaCompleto = val1 + " " + lexemaActual + " " + val2; // Ej. "#Dacum += 5"
             int ambitoActual =  pilaContadorAmbito.peek();
 
