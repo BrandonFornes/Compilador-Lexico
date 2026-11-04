@@ -68,6 +68,7 @@ public class AnalizadorPrincipal extends JFrame {
     String idMetodoActual = "";
     String tipoMetodoActual = "";
     boolean encontroReturn = false;
+    String lineaDelReturn = ""; // <-- NUEVA VARIABLE
 
     String funcionLlamadaActual = "";
     int contadorArgumentos = 0;
@@ -1429,22 +1430,22 @@ public class AnalizadorPrincipal extends JFrame {
             if (tope.equals("803")){
                 // Insertar esto DENTRO de tu Acción 803 actual, antes del pop()
                 int ambitoActual = pilaContadorAmbito.isEmpty() ? 0 : pilaContadorAmbito.peek();
-
+                String lineaAImprimir = encontroReturn ? lineaDelReturn : tokenActual[2].toString();
                 // Regla 1130: Toda función debe tener al menos un retorno[cite: 13]
                 if (enFuncion) {
                     if (encontroReturn) {
-                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1130", "RETURN DE FUNCION", "Acept", idMetodoActual, ambitoActual});
+                        listaRegistroReglas.add(new Object[]{lineaAImprimir, "1130", "RETURN DE FUNCION", "Acept", idMetodoActual, ambitoActual,"return"});
                     } else {
                         String errorMsg = "La función declarada debe contener por lo menos un retorno";
                         System.out.println("error " + errorMsg);
-                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1130", "RETURN DE FUNCION", "Error", idMetodoActual, ambitoActual});
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1130", "RETURN DE FUNCION", "Error", idMetodoActual, ambitoActual,"return"});
                         listaErroresSemantico2.add(new Object[]{561, errorMsg, idMetodoActual, "Semantico 2", tokenActual[2]});
                     }
                 } 
                 // Regla 1140: Procedimiento no debe tener retorno (Verificación final de Acept)[cite: 13]
                 else if (enProcedimiento) {
                     if (!encontroReturn) {
-                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1140", "NO RETURN DE PROCEDIMIENTO", "Acept", idMetodoActual, ambitoActual});
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1140", "NO RETURN DE PROCEDIMIENTO", "Acept", idMetodoActual, ambitoActual,"}"});
                     }
                 }
 
@@ -1545,7 +1546,9 @@ public class AnalizadorPrincipal extends JFrame {
                 // Iniciamos el modo "Aislamiento de Arreglo"
                 evaluandoArreglo = true;
                 bufferArreglo.clear();
-                expresionActual.remove(expresionActual.size() - 1);
+                if (!expresionActual.isEmpty()){
+                    expresionActual.remove(expresionActual.size() - 1);
+                }
                 //expresionActual.clear(); // NUEVO: Borramos la "basura" que el léxico metió antes de aislar
                 lexemaArregloCompleto = ultimoIdVisto + "["; 
                 
@@ -1607,10 +1610,10 @@ public class AnalizadorPrincipal extends JFrame {
                             if (contadorDimensionesUso > arregloEnUso.dimensionArr) {
                                 String descFallo = "Se excedió la cantidad de dimensiones declaradas (" + arregloEnUso.dimensionArr + ")";
                                 System.out.println("error " + descFallo);
-                                listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla3, descRegla3, "Error, " + descFallo, arregloEnUso.id, ambitoActual});
+                                listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla3, descRegla3, "Error", arregloEnUso.id, ambitoActual,arregloEnUso.dimensionArr});
                                 listaErroresSemantico2.add(new Object[]{546, descRegla3, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]});
                             } else {
-                                listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla3, descRegla3, "Acept", arregloEnUso.id, ambitoActual});
+                                listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla3, descRegla3, "Acept", arregloEnUso.id, ambitoActual,arregloEnUso.dimensionArr});
 
                                 // Regla 4
                                 boolean esEntera = false;
@@ -1623,11 +1626,11 @@ public class AnalizadorPrincipal extends JFrame {
 
                                 if (!esEntera) {
                                     System.out.println("error La exp no es entera: " + valorFinalDimension);
-                                    listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla4, descRegla4, "Error, la expresión no es entera", valorFinalDimension, ambitoActual});
+                                    listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla4, descRegla4, "Error", valorFinalDimension, ambitoActual,"TD"});
                                     listaErroresSemantico2.add(new Object[]{547, descRegla4, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]});
                                 } else {
                                     System.out.println("bien = Expresión entera válida: " + valorFinalDimension);
-                                    listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla4, descRegla4, "Acept", valorFinalDimension, ambitoActual});
+                                    listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla4, descRegla4, "Acept", valorFinalDimension, ambitoActual,"TD"});
 
                                     // Regla 5
                                     String cveRegla5 = "1050";
@@ -1652,11 +1655,11 @@ public class AnalizadorPrincipal extends JFrame {
                                     if (!enRango) {
                                         String descFalloRango = "Índice fuera de rango: se usó '" + valorFinalDimension + "'";
                                         System.out.println("error " + descFalloRango);
-                                        listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla5, descRegla5, "Error, " + descFalloRango, valorFinalDimension, ambitoActual});
+                                        listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla5, descRegla5, "Error", valorFinalDimension, ambitoActual,"TD"});
                                         listaErroresSemantico2.add(new Object[]{548, descFalloRango, arregloEnUso.id, "Semantico 2", tokenEvaluado[2]});
                                     } else {
                                         System.out.println("bien = Índice dentro del rango permitido (" + valorFinalDimension + " < " + limiteMaximo + ")");
-                                        listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla5, descRegla5, "Acept", valorFinalDimension, ambitoActual});
+                                        listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla5, descRegla5, "Acept", valorFinalDimension, ambitoActual,"TD"});
                                     }
                                 }
                             }
@@ -1692,7 +1695,7 @@ public class AnalizadorPrincipal extends JFrame {
                 lexemaArregloCompleto += "]";
 
                 if (arregloEnUso != null && arregloEnUso.dimensionArr != null) {
-                    if (contadorDimensionesUso != arregloEnUso.dimensionArr) {
+                    if (contadorDimensionesUso < arregloEnUso.dimensionArr) {
                         String cveRegla3 = "1030";
                         String descRegla3 = "CANT. DIMENSIONES";
                         int ambitoActual = pilaContadorAmbito.peek();
@@ -1798,13 +1801,13 @@ public class AnalizadorPrincipal extends JFrame {
                         System.out.println("bien = Switch válido de tipo: " + tipoSwitchActual);
                         listaRegistroReglas.add(new Object[]{
                             tokenEvaluado[2], "1060", descRegla6, 
-                            "Acept" + tipoSwitchActual, valorFinal,ambitoActual
+                            "Acept", valorFinal,ambitoActual,"id"
                         });
                     } else {
                         System.out.println("error Incompatibilidad: " + descRegla6 + " (Se evaluó: " + tipoSwitchActual + ")");
                         listaRegistroReglas.add(new Object[]{
                             tokenEvaluado[2], "1060", descRegla6, 
-                            "Error" + tipoSwitchActual, valorFinal,ambitoActual
+                            "Error", valorFinal,ambitoActual,"id"
                         });
                         Object[] datosError = {550, descRegla6, valorFinal, "Semantico 2", tokenEvaluado[2]};
                         listaErroresSemantico2.add(datosError);
@@ -1896,7 +1899,7 @@ public class AnalizadorPrincipal extends JFrame {
                             System.out.println("bien = El switch se ha adaptado al tipo del caso: " + tipoSwitchActual);
                             listaRegistroReglas.add(new Object[]{
                                 tokenEvaluadoCase[2], "1061", descRegla6, 
-                                "Acept" + tipoCase, valorFinalCase,ambitoActual
+                                "Acept" + tipoCase, valorFinalCase,ambitoActual,tipoSwitchActual
                             });
                         } else {
                             // El primer caso tampoco es válido
@@ -1904,7 +1907,7 @@ public class AnalizadorPrincipal extends JFrame {
                             System.out.println("error " + errorMsg);
                             listaRegistroReglas.add(new Object[]{
                                 tokenEvaluadoCase[2], "1061", descRegla6, 
-                                "Error", valorFinalCase,ambitoActual
+                                "Error", valorFinalCase,ambitoActual,tipoSwitchActual
                             });
                             listaErroresSemantico2.add(new Object[]{551, errorMsg,valorFinalCase, "Semantico 2", tokenEvaluadoCase[2]});
                         }
@@ -1917,7 +1920,7 @@ public class AnalizadorPrincipal extends JFrame {
                             System.out.println("bien = El caso coincide con el tipo del switch (" + tipoSwitchActual + ")");
                             listaRegistroReglas.add(new Object[]{
                                 tokenEvaluadoCase[2], "1061", descRegla6, 
-                                "Acept", valorFinalCase,ambitoActual
+                                "Acept", valorFinalCase,ambitoActual,tipoSwitchActual
                             });
                         } else {
                             // FALLA
@@ -1925,7 +1928,7 @@ public class AnalizadorPrincipal extends JFrame {
                             System.out.println("error " + errorMsg);
                             listaRegistroReglas.add(new Object[]{
                                 tokenEvaluadoCase[2], "1061", descRegla6, 
-                                "Error", valorFinalCase,ambitoActual
+                                "Error", valorFinalCase,ambitoActual,tipoSwitchActual
                             });
                             listaErroresSemantico2.add(new Object[]{551, errorMsg, valorFinalCase, "Semantico 2", tokenEvaluadoCase[2]});
                         }
@@ -1974,7 +1977,8 @@ public class AnalizadorPrincipal extends JFrame {
                         descRegla7, 
                         "Error", 
                         "++ / -- " + lexemaVar, 
-                        ambitoActual
+                        ambitoActual,
+                        "TD"
                     });
 
                     // Disparamos error semántico 552 (Ajusta el código de error si es necesario)
@@ -1991,7 +1995,8 @@ public class AnalizadorPrincipal extends JFrame {
                         descRegla7, 
                         "Acept", 
                         "++ / -- " + lexemaVar, 
-                        ambitoActual
+                        ambitoActual,
+                        "TD"
                     });
                 }
                 pilaSintactica.pop();
@@ -2060,11 +2065,11 @@ public class AnalizadorPrincipal extends JFrame {
                         
                         if (tipoCalculado.equals("Boolean")) {
                             System.out.println("bien = Operador '!' válido para: " + valorFinal);
-                            listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla7, descRegla7, "Acept", "! (" + valorFinal + ")", ambitoActual});
+                            listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla7, descRegla7, "Acept", "! (" + valorFinal + ")", ambitoActual,"TB"});
                         } else {
                             String errorMsg = "Se esperaba tipo Booleano, pero la expresión es '" + tipoCalculado + "'";
                             System.out.println("error Incompatibilidad: " + descRegla7 + ". " + errorMsg);
-                            listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla7, descRegla7, "Error", "! (" + valorFinal + ")", ambitoActual});
+                            listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla7, descRegla7, "Error", "! (" + valorFinal + ")", ambitoActual,"TB"});
                             listaErroresSemantico2.add(new Object[]{552, descRegla7, valorFinal, "Semantico 2", tokenEvaluado[2]});
                         }
                     }
@@ -2076,11 +2081,11 @@ public class AnalizadorPrincipal extends JFrame {
                         
                         if (tipoCalculado.equals("Dec") || tipoCalculado.equals("Bin") || tipoCalculado.equals("Oct") || tipoCalculado.equals("Hex")) {
                             System.out.println("bien = Operador '~' válido para tipo entero: " + valorFinal);
-                            listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla7, descRegla7, "Acept", "~ (" + valorFinal + ")", ambitoActual});
+                            listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla7, descRegla7, "Acept", "~ (" + valorFinal + ")", ambitoActual,"TD"});
                         } else {
                             String errorMsg = "Se esperaba tipo Entero, pero la expresión es '" + tipoCalculado + "'";
                             System.out.println("error Incompatibilidad: " + descRegla7 + ". " + errorMsg);
-                            listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla7, descRegla7, "Error", "~ (" + valorFinal + ")", ambitoActual});
+                            listaRegistroReglas.add(new Object[]{tokenEvaluado[2], cveRegla7, descRegla7, "Error", "~ (" + valorFinal + ")", ambitoActual,"TD"});
                             listaErroresSemantico2.add(new Object[]{552, descRegla7, valorFinal, "Semantico 2", tokenEvaluado[2]});
                         }
                     }
@@ -2215,13 +2220,13 @@ public class AnalizadorPrincipal extends JFrame {
                     
                     String lexemaInit = lexemaAsignacionFor + " " + valorDer; 
                     System.out.println("bien = Inicialización de for válida: " + lexemaInit);
-                    listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Acept", lexemaInit.trim(), ambito});
+                    listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Acept", lexemaInit.trim(), ambito,"id"});
                     
                 } else {
                     // Si nunca pasó por la 811, no hubo '='
                     String errorMsg = "La primera parte del for debe ser una asignación (ej. x = 0)";
                     System.out.println("error " + errorMsg);
-                    listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Error", "Inicialización inválida", ambito});
+                    listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Error", "Inicialización inválida", ambito,"id"});
                     listaErroresSemantico2.add(new Object[]{557, errorMsg, "for(...)", "Semantico 2", tokenActual[2]});
                 }
                 leyendoOperacion = true; // Encendemos para leer la condición booleana
@@ -2281,54 +2286,100 @@ public class AnalizadorPrincipal extends JFrame {
 
                     if (tipoCondicion.equals("Boolean") || tipoCondicion.equals("Booleana")) {
                         System.out.println("bien = Condición de for válida: " + lexemaCond);
-                        listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Acept", lexemaCond.toString().trim(), ambito});
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Acept", lexemaCond.toString().trim(), ambito,"TB"});
                     } else {
                         String errorMsg = "La condición del for debe ser Booleana, se encontró: " + tipoCondicion;
                         System.out.println("error " + errorMsg);
-                        listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Error", lexemaCond.toString().trim(), ambito});
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Error", lexemaCond.toString().trim(), ambito,"TB"});
                         listaErroresSemantico2.add(new Object[]{555, errorMsg, lexemaCond.toString().trim(), "Semantico 2", tokenActual[2]});
                     }
                     expresionActual.clear();
                 }
                 leyendoOperacion = true; // Encendemos para leer el incremento
                 parteForClasico = 3;
-                valorDerechoStr = "";
+                valorDerechoStr = "";   
+                // NUEVO: Limpiamos por seguridad antes de leer la 3ra parte
+                tokenAsignacion = null; 
+                idIzquierdoStr = "";
                 pilaSintactica.pop();
                 continue;
             }
 
+            //TODO VERIFICAR EL INCREMENTO QUE ESTE BIEN
             // =====================================================================
-            // FOR CLÁSICO: Acción 833 (Se activa al cerrar el for) -> Valida ++ / --
+            // FOR CLÁSICO: Acción 833 (Se activa al cerrar el for)
             // =====================================================================
             if (tope.equals("833")) {
                 leyendoOperacion = false;
                 expresionActual.removeIf(tok -> tok[1].toString().equals(";"));
-                if (!expresionActual.isEmpty()) {
+                
+                if (!expresionActual.isEmpty() || tokenAsignacion != null) {
                     boolean tieneIncDec = false;
-                    StringBuilder lexemaInc = new StringBuilder();
+                    String lexemaInc = "";
                     
-                    for (Object[] tok : expresionActual) {
-                        String lex = (String) tok[1];
-                        lexemaInc.append(lex).append(" ");
+                    // 1. Buscamos ++ o -- en lo que quedó en el buffer
+                    for (int j = 0; j < expresionActual.size(); j++) {
+                        String lex = (String) expresionActual.get(j)[1];
+                        lexemaInc += lex + " ";
                         if (lex.equals("++") || lex.equals("--")) {
                             tieneIncDec = true;
                         }
                     }
                     
-                    String cve = "1082";
-                    String desc = "INCREMENTO O DECREMENTO";
+                    // 2. Rescatamos la Asignación Compuesta de la variable global
+                    boolean tieneAsignacionCompuesta = false;
+                    String opAsig = "";
+                    
+                    if (tokenAsignacion != null && tokenAsignacion[1] != null) {
+                        opAsig = tokenAsignacion[1].toString();
+                        if (opAsig.equals("+=") || opAsig.equals("-=") || opAsig.equals("*=") || opAsig.equals("/=")) {
+                            tieneAsignacionCompuesta = true;
+                            // Reconstruimos el texto completo para el Excel: "@w += b"
+                            lexemaInc = idIzquierdoStr + " " + opAsig + " " + lexemaInc.trim(); 
+                        }
+                    }
+                    
                     int ambito = pilaContadorAmbito.peek();
 
-                    if (tieneIncDec) {
-                        System.out.println("bien = Incremento de for válido: " + lexemaInc);
-                        listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Acept", lexemaInc.toString().trim(), ambito});
-                    } else {
-                        String errorMsg = "La tercera parte del for debe contener ++ o --";
-                        System.out.println("error " + errorMsg);
-                        listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Error", lexemaInc.toString().trim(), ambito});
-                        listaErroresSemantico2.add(new Object[]{556, errorMsg, lexemaInc.toString().trim(), "Semantico 2", tokenActual[2]});
+                    // ======================================================
+                    // RUTA 1: TIENE ASIGNACIÓN COMPUESTA (Dispara Regla 1021)
+                    // ======================================================
+                    if (tieneAsignacionCompuesta) {
+                        String cve1021 = "1021";
+                        String desc1021 = "ASIGNACIÓN COMPUESTA";
+                        Identificador idObj = buscarEnTabla(idIzquierdoStr);
+                        
+                        if (idObj != null) {
+                            String tipoEsperado = idObj.tipo;
+                            System.out.println("bien = Asignación compuesta en FOR: " + lexemaInc);
+                            listaRegistroReglas.add(new Object[]{tokenActual[2], cve1021, desc1021, "Acept", lexemaInc.trim(), ambito, tipoEsperado});
+                        } else {
+                            System.out.println("error Asignación compuesta en FOR no válida");
+                            listaRegistroReglas.add(new Object[]{tokenActual[2], cve1021, desc1021, "Error", lexemaInc.trim(), ambito, "-"});
+                            listaErroresSemantico2.add(new Object[]{556, "ID no encontrado para asignación", lexemaInc.trim(), "Semantico 2", tokenActual[2]});
+                        }
+                        
+                        // Limpiamos al terminar
+                        tokenAsignacion = null;
+                        idIzquierdoStr = "";
                     }
-                    expresionActual.clear();
+                    // ======================================================
+                    // RUTA 2: TIENE ++ O -- (Dispara Regla 1082)
+                    // ======================================================
+                    else {
+                        String cve = "1082";
+                        String desc = "INCREMENTO O DECREMENTO";
+
+                        if (tieneIncDec) {
+                            System.out.println("bien = Incremento de for válido: " + lexemaInc);
+                            listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Acept", lexemaInc.trim(), ambito, "op"});
+                        } else {
+                            String errorMsg = "La tercera parte del for debe contener ++, -- o una asignación compuesta";
+                            System.out.println("error " + errorMsg);
+                            listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Error", lexemaInc.trim(), ambito, "op"});
+                            listaErroresSemantico2.add(new Object[]{556, errorMsg, lexemaInc.trim(), "Semantico 2", tokenActual[2]});
+                        }
+                    }
                 }
                 expresionActual.clear();
                 valorDerechoStr = "";
@@ -2392,13 +2443,13 @@ public class AnalizadorPrincipal extends JFrame {
                     // 4. Validamos la Regla 1
                     if (!esLogico) {
                         System.out.println("error Incompatibilidad de tipos: " + descRegla + ". " + valorFinalParaError);
-                        listaRegistroReglas.add(new Object[]{tokenActual[2], cveRegla, descRegla, "Error", valorFinalParaError, ambitoActual});
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], cveRegla, descRegla, "Error", valorFinalParaError, ambitoActual,"TB"});
 
                         Object[] error = {549, descRegla, valorFinalParaError, "Semantico 2", tokenActual[2]};
                         listaErroresSemantico2.add(error);
                     } else {
                         System.out.println("bien = Condición lógica válida: " + valorFinalParaError);
-                        listaRegistroReglas.add(new Object[]{tokenActual[2], cveRegla, descRegla, "Acept", valorFinalParaError, ambitoActual});
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], cveRegla, descRegla, "Acept", valorFinalParaError, ambitoActual,"TB"});
                     }
 
                     // 5. Limpieza profunda obligatoria
@@ -2433,7 +2484,7 @@ public class AnalizadorPrincipal extends JFrame {
                     else if (idMetodoActual.startsWith("¿")) tipoMetodoActual = "exp";
                     
                     System.out.println("bien = Es clase función: " + idMetodoActual + " (Tipo esperado: " + tipoMetodoActual + ")");
-                    listaRegistroReglas.add(new Object[]{tokenActual[2], "1120", "El ID debe ser clase función", "Acept", idMetodoActual, ambitoActual});
+                    listaRegistroReglas.add(new Object[]{tokenActual[2], "1120", "El ID debe ser clase función", "Acept", idMetodoActual, ambitoActual,"func"});
 }
                 // Si empieza con letra, es Procedimiento (Regla 11)[cite: 11]
                 else {
@@ -2442,7 +2493,7 @@ public class AnalizadorPrincipal extends JFrame {
                     tipoMetodoActual = "Void";
                     
                     System.out.println("bien = Es clase procedimiento: " + idMetodoActual);
-                    listaRegistroReglas.add(new Object[]{tokenActual[2], "1110", "ID clase procedimiento", "Acept", idMetodoActual, ambitoActual});
+                    listaRegistroReglas.add(new Object[]{tokenActual[2], "1110", "ID clase procedimiento", "Acept", idMetodoActual, ambitoActual,"proc"});
                 }
                 
                 encontroReturn = false;
@@ -2462,13 +2513,13 @@ public class AnalizadorPrincipal extends JFrame {
             if (tope.equals("837")){
                 leyendoOperacion = false;
                 int ambitoActual = pilaContadorAmbito.isEmpty() ? 0 : pilaContadorAmbito.peek();
-                
+                lineaDelReturn = tokenActual[2].toString();
                 // Si es Procedimiento y tiene return, falla la Regla 14[cite: 13]
                 if (enProcedimiento) {
                     encontroReturn = true;
                     String errorMsg = "Un procedimiento no debe de tener retorno";
                     System.out.println("error " + errorMsg);
-                    listaRegistroReglas.add(new Object[]{tokenActual[2], "1140", "NO RETURN DE PROCEDIMIENTO", "Error", "return", ambitoActual});
+                    listaRegistroReglas.add(new Object[]{tokenActual[2], "1140", "NO RETURN DE PROCEDIMIENTO", "Error", "return", ambitoActual,"}"});
                     listaErroresSemantico2.add(new Object[]{559, errorMsg, "return", "Semantico 2", tokenActual[2]});
                 } 
                 // Si es Función, validamos que el tipo coincida (Regla 1131)[cite: 13]
@@ -2531,11 +2582,11 @@ public class AnalizadorPrincipal extends JFrame {
                     // Regla 1131: Comparación de tipos[cite: 13]
                     if (tipoMetodoActual.equals(tipoRetorno) || tipoMetodoActual.equals("Variant")|| tipoRetorno.equals("Variant")) {
                         System.out.println("bien = Tipo de retorno coincide: " + tipoRetorno);
-                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1131", "Tipo de retorno igual", "Acept", "return " + valorFinal, ambitoActual});
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1131", "Tipo de retorno igual", "Acept", "return " + valorFinal, ambitoActual,tipoMetodoActual});
                     } else {
                         String errorMsg = "El tipo de retorno (" + tipoRetorno + ") no coincide con la función (" + tipoMetodoActual + ")";
                         System.out.println("error " + errorMsg);
-                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1131", "Tipo de retorno igual", "Error", "return " + valorFinal, ambitoActual});
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1131", "Tipo de retorno igual", "Error", "return " + valorFinal, ambitoActual,tipoMetodoActual});
                         listaErroresSemantico2.add(new Object[]{560, errorMsg, "return " + valorFinal, "Semantico 2", tokenActual[2]});
                     }
                 }
@@ -2586,11 +2637,11 @@ public class AnalizadorPrincipal extends JFrame {
                             errorRegla15 = true; // Bloquea la regla 16 para este y los siguientes
                             String errorMsg = "Se enviaron más argumentos (" + contadorArgumentos + ") de los declarados (" + totalParamsDeclarados + ")";
                             System.out.println("error " + errorMsg);
-                            listaRegistroReglas.add(new Object[]{tokenActual[2], "1150", "PARAMETROS DECLARADOS", "Error", funcionLlamadaActual, ambitoActual});
+                            listaRegistroReglas.add(new Object[]{tokenActual[2], "1150", "PARAMETROS DECLARADOS", "Error", funcionLlamadaActual, ambitoActual,totalParamsDeclarados});
                             listaErroresSemantico2.add(new Object[]{562, errorMsg, funcionLlamadaActual, "Semantico 2", tokenActual[2]});
                         } else {
                             System.out.println("bien = Parámetro " + contadorArgumentos + " dentro del límite de " + funcionLlamadaActual);
-                            listaRegistroReglas.add(new Object[]{tokenActual[2], "1150", "PARAMETROS DECLARADOS", "Acept", funcionLlamadaActual, ambitoActual});
+                            listaRegistroReglas.add(new Object[]{tokenActual[2], "1150", "PARAMETROS DECLARADOS", "Acept", funcionLlamadaActual, ambitoActual,totalParamsDeclarados});
                         }
 
                         // ----------------------------------------------------
@@ -2673,11 +2724,11 @@ public class AnalizadorPrincipal extends JFrame {
 
                                     if (tipoEsperado.equals(tipoArgumento) || tipoEsperado.equals("Variant") || tipoArgumento.equals("Variant")) {
                                         System.out.println("bien = Tipo de argumento coincide: " + tipoArgumento);
-                                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1160", "PARAMETROS DE TIPO", "Acept", lexemaEval, ambitoActual});
+                                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1160", "PARAMETROS DE TIPO", "Acept", lexemaEval, ambitoActual,tipoEsperado});
                                     } else {
                                         String errorMsg = "El argumento (" + tipoArgumento + ") no coincide con el parámetro esperado (" + tipoEsperado + ")";
                                         System.out.println("error " + errorMsg);
-                                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1160", "PARAMETROS DE TIPO", "Error", lexemaEval, ambitoActual});
+                                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1160", "PARAMETROS DE TIPO", "Error", lexemaEval, ambitoActual,tipoEsperado});
                                         listaErroresSemantico2.add(new Object[]{563, errorMsg, lexemaEval, "Semantico 2", tokenActual[2]});
                                     }
                                 }
@@ -2801,7 +2852,7 @@ public class AnalizadorPrincipal extends JFrame {
                         
                         listaRegistroReglas.add(new Object[]{
                             tokenActual[2], cveRegla9, descRegla9, 
-                            "Error", idIzquierdoStr, ambitoActual
+                            "Error", idIzquierdoStr, ambitoActual,"id"
                         });
                         listaErroresSemantico2.add(new Object[]{
                             558, errorMsg, idIzquierdoStr, "Semantico 2", tokenActual[2]
@@ -2813,7 +2864,7 @@ public class AnalizadorPrincipal extends JFrame {
                         
                         listaRegistroReglas.add(new Object[]{
                             tokenActual[2], cveRegla9, descRegla9, 
-                            "Acept", idIzquierdoStr, ambitoActual
+                            "Acept", idIzquierdoStr, ambitoActual,"id"
                         });
                     }
                 }
@@ -3038,13 +3089,13 @@ public class AnalizadorPrincipal extends JFrame {
                             
                             listaRegistroReglas.add(new Object[]{
                                 tokenActual[2], cveRegla10, descRegla10, 
-                                "Error", lexemaActual, ambitoNum
+                                "Error", lexemaActual, ambitoNum,"id"
                             });
                         } else {
                             // CUMPLE REGLA 10
                             listaRegistroReglas.add(new Object[]{
                                 tokenActual[2], cveRegla10, descRegla10, 
-                                "Acept", lexemaActual, ambitoNum
+                                "Acept", lexemaActual, ambitoNum,"id"
                             });
                         }
                         // =================================================================
@@ -3387,7 +3438,8 @@ public class AnalizadorPrincipal extends JFrame {
                     descRegla2, 
                     "Error", 
                     lexemaCompleto, 
-                    ambitoActual
+                    ambitoActual,
+                    "id"
                 });
             }
             else {
@@ -3399,7 +3451,8 @@ public class AnalizadorPrincipal extends JFrame {
                     descRegla2, 
                     "Acept", 
                     lexemaCompleto, 
-                    ambitoActual
+                    ambitoActual,
+                    "id"
                 });
             }
             
@@ -3545,7 +3598,7 @@ public class AnalizadorPrincipal extends JFrame {
         JFileChooser fc = new JFileChooser();
         fc.setDialogTitle("Exportar Resultados a Excel");
         fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivo de Excel (*.xlsx)", "xlsx"));
-        fc.setSelectedFile(new File("Semantica1-BrandonFornesRubio.xlsx"));
+        fc.setSelectedFile(new File("Semantica2-BrandonFornesRubio.xlsx"));
         if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
                 File archivo = fc.getSelectedFile();
                 if (!archivo.getName().toLowerCase().endsWith(".xlsx")) {
@@ -3878,6 +3931,97 @@ public class AnalizadorPrincipal extends JFrame {
                 hojaResumen.autoSizeColumn(i);
             }
             // =========================================================================
+            // =========================================================================
+            // 8. NUEVA HOJA: SEMANTICA 2 - BASE
+            // =========================================================================
+            Sheet hojaSemanticaBase = workbook.createSheet("Semantica 2-Base");
+            String[] cabeceraBase = {"Regla", "Tope Pila", "Valor Real", "Linea", "Edo", "Ambito"};
+            crearFilaCabecera(hojaSemanticaBase, cabeceraBase, estiloCabecera);
+
+            int filaBaseIndex = 1;
+            
+            // Mapas para calcular automáticamente la hoja de "Semantica 2-Total"
+            Map<String, Integer> conteoAparecen = new HashMap<>();
+            Map<String, Integer> conteoAceptadas = new HashMap<>();
+            Map<String, Integer> conteoErrores = new HashMap<>();
+
+            if (listaRegistroReglas != null) {
+                for (Object[] regla : listaRegistroReglas) {
+                    Row fila = hojaSemanticaBase.createRow(filaBaseIndex++);
+                    
+                    // Mapeo (0-indexado) según tus especificaciones:
+                    // 0: Línea (tokenActual[2])
+                    // 1: Clave Error (2do en la lista)
+                    // 2: Descripción (3ro - se ignora en la hoja base)
+                    // 3: Estado (4to en la lista)
+                    // 4: Lexema (5to en la lista)
+                    // 5: Ámbito (6to en la lista)
+                    // 6: Tope Pila (El último de la lista que agregaste)
+                    
+                    String reglaCVE = regla.length > 1 && regla[1] != null ? regla[1].toString().trim() : "-";
+                    String topePila = regla.length > 6 && regla[6] != null ? regla[6].toString() : "-";
+                    String valorReal = regla.length > 4 && regla[4] != null ? regla[4].toString() : "-";
+                    String linea = regla.length > 0 && regla[0] != null ? regla[0].toString() : "-";
+                    String estado = regla.length > 3 && regla[3] != null ? regla[3].toString() : "-";
+                    String ambito = regla.length > 5 && regla[5] != null ? regla[5].toString() : "-";
+
+                    fila.createCell(0).setCellValue(reglaCVE);
+                    fila.createCell(1).setCellValue(topePila);
+                    fila.createCell(2).setCellValue(valorReal);
+                    fila.createCell(3).setCellValue(linea);
+                    fila.createCell(4).setCellValue(estado);
+                    fila.createCell(5).setCellValue(ambito);
+
+                    // Acumulando para la tabla de totales
+                    if (!reglaCVE.equals("-")) {
+                        conteoAparecen.put(reglaCVE, conteoAparecen.getOrDefault(reglaCVE, 0) + 1);
+                        // Si dice "Acept" o "Aceptado", lo sumamos
+                        if (estado.toLowerCase().contains("acept") || estado.toLowerCase().contains("bien")) {
+                            conteoAceptadas.put(reglaCVE, conteoAceptadas.getOrDefault(reglaCVE, 0) + 1);
+                        } 
+                        // Si dice "Error", lo sumamos
+                        else if (estado.toLowerCase().contains("error")) {
+                            conteoErrores.put(reglaCVE, conteoErrores.getOrDefault(reglaCVE, 0) + 1);
+                        }
+                    }
+                }
+            }
+
+            for (int i = 0; i < cabeceraBase.length; i++) hojaSemanticaBase.autoSizeColumn(i);
+
+            // =========================================================================
+            // 9. NUEVA HOJA: SEMANTICA 2 - TOTAL
+            // =========================================================================
+            Sheet hojaSemanticaTotal = workbook.createSheet("Semantica 2-Total");
+            String[] cabeceraTotal = {"Reglas", "Aparecen", "Aceptada", "Errores"};
+            crearFilaCabecera(hojaSemanticaTotal, cabeceraTotal, estiloCabecera);
+
+            // Lista oficial de reglas basada en la plantilla del profesor
+            String[] reglasOficiales = {
+                "1010", "1011", "1012", "1013", "1020", "1021", "1022", "1030", "1040", "1050", 
+                "1060", "1061", "1070", "1080", "1081", "1082", "1083", "1084", "1090", "1100", 
+                "1110", "1120", "1130", "1131", "1140", "1150", "1160"
+            };
+
+            int filaTotalIndex = 1;
+            for (String r : reglasOficiales) {
+                Row fila = hojaSemanticaTotal.createRow(filaTotalIndex++);
+                
+                // Imprimir el número de regla en la columna 0
+                fila.createCell(0).setCellValue(Integer.parseInt(r));
+                
+                // Obtenemos los valores; si no aparecen, automáticamente será 0
+                int aparecen = conteoAparecen.getOrDefault(r, 0);
+                int aceptadas = conteoAceptadas.getOrDefault(r, 0);
+                int errores = conteoErrores.getOrDefault(r, 0);
+                
+                // Imprimimos siempre, rellenando con ceros donde aplique
+                fila.createCell(1).setCellValue(aparecen);
+                fila.createCell(2).setCellValue(aceptadas);
+                fila.createCell(3).setCellValue(errores);
+            }
+
+            for (int i = 0; i < cabeceraTotal.length; i++) hojaSemanticaTotal.autoSizeColumn(i);
 
             try (FileOutputStream out = new FileOutputStream(archivo)) {
                 workbook.write(out);
