@@ -51,6 +51,9 @@ public class AnalizadorPrincipal extends JFrame {
     //Variables SEMANTICA
     boolean leyendoOperacion = false;
     boolean ignorarParaExcel = false;
+    int[] opPend = new int[9];   // temporales de operaciones (incluye las de indices/argumentos)
+    int[] opBase = new int[9];
+    int opOperandoVar = 0;        // temporales Variant de ids no declarados usados como operando (no se cuentan en Semantica 1)
     List<Object[]> expresionActual = new ArrayList<>();
     int lineaOperacionActual = 0;
     public List<String> registroOperaciones = new ArrayList<>();
@@ -82,6 +85,12 @@ public class AnalizadorPrincipal extends JFrame {
     }
     Deque<CtxMetodo> pilaMetodos = new ArrayDeque<>();
     boolean ultimoIdDuplicado = false;   // el ultimo id declarado ya existia en su ambito
+    boolean restaurarClaseFor = false;   // en el inicio del for: tras el '=' de un id, el siguiente (, #Dj = 20) tambien se declara
+    boolean descartarCierreUnario = false;
+    int asigsFor = 0;
+    final Deque<String> pilaEstructuraCond = new ArrayDeque<>();   // if/elseif/while/do cuya condicion falta evaluar                    // asignaciones en el inicio del for (for (#Di = 0, #Dj = 20; ...) lleva 2 reglas 1080)
+    int contUnarioTemp = 0;              // nombres de los temporales de ! y ~ (solo para seguir la expresion de afuera)
+    final Deque<Object[]> pilaUnarioCtx = new ArrayDeque<>();   // expresion de afuera de un !( ... ) / ~( ... )
     boolean ladoDerechoVoid = false;
     boolean ladoIzquierdoArreglo = false; // la sentencia empieza con un arreglo (ej. #DL[1] = ...)// la asignacion en curso recibe un valor void (CLEAR, procedimiento...)
 
@@ -1376,6 +1385,10 @@ public class AnalizadorPrincipal extends JFrame {
         enProcedimiento = false;
         encontroReturn = false;
         pilaMetodos.clear();
+        pilaUnarioCtx.clear();
+        pilaEstructuraCond.clear();
+        descartarCierreUnario = false;
+        restaurarClaseFor = false;
         ultimoIdDuplicado = false;
         idMetodoActual = "";
         tipoMetodoActual = "";
@@ -1398,6 +1411,8 @@ public class AnalizadorPrincipal extends JFrame {
         String ultimoIdVisto = "";
         String estructuraEnUso = "";
         String tipoSwitchActual = "";
+        Stack<Object[]> pilaSwitch = new Stack<>();
+        int profLlavesSw = 0;
         String lexemaSwitchActual = "";
         String idIteradorFor = "";
         boolean huboAsignacionFor = false;
@@ -1414,6 +1429,7 @@ public class AnalizadorPrincipal extends JFrame {
         listaResumenOperaciones.clear();
         listaRegistroReglas.clear();
         contadoresTemporales = new int[9];
+        opPend = new int[9]; opBase = new int[9];
         if (!listaTokens.isEmpty() && listaTokens.get(listaTokens.size()-1)[1].equals("$")) {
             listaTokens.remove(listaTokens.size()-1);
         }
@@ -1436,6 +1452,12 @@ public class AnalizadorPrincipal extends JFrame {
             String terminalActual = getTipoToken(tokenActual);
             //System.out.println("Pila Sintactica : " + pilaSintactica);
             //System.out.println("tope: "+tope + " , lexema actual : "+ terminalActual);
+
+            if (tope.equals("820") || tope.equals("824") || tope.equals("825") || tope.equals("827")
+                    || tope.equals("828") || tope.equals("839")) {
+                quitarParentesisExtra(expresionActual);
+            }
+            if (!expresionActual.isEmpty() && tope.length() == 3 && tope.charAt(0) == '8') plegarSignos(expresionActual);
 
             if (tope.equals("800")){
                 EsDeclaracion = false;
@@ -1532,12 +1554,14 @@ public class AnalizadorPrincipal extends JFrame {
                 ignorarParaExcel = true; 
                 huboAsignacionFor = false; // NUEVO
                 lexemaAsignacionFor = "";  // NUEVO
+                asigsFor = 0;
                 parteForClasico = 1;
                 pilaSintactica.pop();
                 continue;
             }
             if (tope.equals("817")) {
                 ignorarParaExcel = false; 
+                opBase = opPend.clone();
 
                 leyendoOperacion = false;      // Forzamos a salir del modo matemático
                 expresionActual.clear();       // Vaciamos los tokens fantasma como "#Dk = #Dk + 1"
@@ -1548,6 +1572,14 @@ public class AnalizadorPrincipal extends JFrame {
                 continue;
             }
             if (tope.equals("818")){
+                // !( ... ) y ~( ... ): se guarda la expresion de afuera para retomarla al cerrar el parentesis
+                if (i >= 2 && String.valueOf(listaTokens.get(i - 1)[1]).equals("(")
+                        && (String.valueOf(listaTokens.get(i - 2)[1]).equals("!") || String.valueOf(listaTokens.get(i - 2)[1]).equals("~"))) {
+                    List<Object[]> previa = new ArrayList<>(expresionActual);
+                    if (!previa.isEmpty() && String.valueOf(previa.get(previa.size() - 1)[1]).equals("(")) previa.remove(previa.size() - 1);
+                    if (!previa.isEmpty() && (String.valueOf(previa.get(previa.size() - 1)[1]).equals("!") || String.valueOf(previa.get(previa.size() - 1)[1]).equals("~"))) previa.remove(previa.size() - 1);
+                    pilaUnarioCtx.push(new Object[]{previa, leyendoOperacion, valorDerechoStr, tokenIzquierdo, tokenAsignacion, idIzquierdoStr});
+                }
                 // 1. Encendemos la recolección de tokens matemáticos/lógicos
                 leyendoOperacion = true;
                 
@@ -1786,12 +1818,16 @@ public class AnalizadorPrincipal extends JFrame {
 
             if (tope.equals("823")){
                 estructuraEnUso = (String) tokenActual[1];
+                // Pila: la condicion de un do llega despues de su cuerpo (donde puede haber otros if/while)
+                pilaEstructuraCond.push(estructuraEnUso);
                 pilaSintactica.pop();
                 continue;
             }
 
             if (tope.equals("824")){
                 leyendoOperacion = false;
+                // Guarda el switch exterior para restaurarlo al cerrar este (switch anidados)
+                pilaSwitch.push(new Object[]{tipoSwitchActual, lexemaSwitchActual, profLlavesSw});
 
                 if (!expresionActual.isEmpty()) {
                     String valorFinal = "";
@@ -1844,6 +1880,11 @@ public class AnalizadorPrincipal extends JFrame {
 
                     // 2. Determinamos su tipo exacto
                     tipoSwitchActual = getTipo(tokenEvaluado);
+                    // Un id no declarado es Variant (no toma el tipo de su prefijo), como en la prueba de referencia
+                    if (expresionActual.size() == 1 && etiqueta(tokenEvaluado).isEmpty()
+                            && esIdentificadorLexema(valorFinal) && buscarEnTabla(valorFinal) == null) {
+                        tipoSwitchActual = "Variant";
+                    }
                 // if (tipoSwitchActual.equals("Bin") || tipoSwitchActual.equals("Oct") || tipoSwitchActual.equals("Hex")) {
                 //     tipoSwitchActual = "Dec"; // Normalizamos las bases numéricas a Decimal (Enteros)
                 // } 
@@ -2000,6 +2041,8 @@ public class AnalizadorPrincipal extends JFrame {
             }
 
             if (tope.equals("826")){
+                // linea del id (si la sentencia no lleva ';' el token actual ya es la '}' de la linea siguiente)
+                Object lineaUn = (i >= 1) ? listaTokens.get(i - 1)[2] : tokenActual[2];
                 String lexemaVar = ultimoIdVisto; // Rescatamos el nombre de la variable
                 Identificador idVar = buscarEnTabla(lexemaVar);
                 
@@ -2031,7 +2074,7 @@ public class AnalizadorPrincipal extends JFrame {
                     //System.out.println("error " + descRegla7 + ". " + errorMsg);
 
                     listaRegistroReglas.add(new Object[]{
-                        tokenActual[2], 
+                        lineaUn, 
                         cveRegla7, 
                         descRegla7, 
                         "Error", 
@@ -2041,7 +2084,7 @@ public class AnalizadorPrincipal extends JFrame {
                     });
 
                     // Disparamos error semántico 552 (Ajusta el código de error si es necesario)
-                    Object[] datosError = {552, descRegla7, lexemaVar, "Semantico 2 ", tokenActual[2]};
+                    Object[] datosError = {552, descRegla7, lexemaVar, "Semantico 2 ", lineaUn};
                     listaErroresSemantico2.add(datosError);
 
                 } else {
@@ -2049,7 +2092,7 @@ public class AnalizadorPrincipal extends JFrame {
                     //System.out.println("bien = Operador unario válido para variable entera '" + lexemaVar + "'");
 
                     listaRegistroReglas.add(new Object[]{
-                        tokenActual[2], 
+                        lineaUn, 
                         cveRegla7, 
                         descRegla7, 
                         "Acept", 
@@ -2064,6 +2107,8 @@ public class AnalizadorPrincipal extends JFrame {
 
             if (tope.equals("827") || tope.equals("828")){
                 leyendoOperacion = false;
+                Object[] ctxUn = pilaUnarioCtx.isEmpty() ? null : pilaUnarioCtx.pop();
+                String tipoResUn = tope.equals("827") ? "Boolean" : "Dec";
 
                 if (!expresionActual.isEmpty()) {
                     String valorFinal = "";
@@ -2117,6 +2162,7 @@ public class AnalizadorPrincipal extends JFrame {
                     int ambitoActual = pilaContadorAmbito.peek(); 
                     String cveRegla7 = "1070";
                     String descRegla7 = "UNARIO CON ENTERO";
+                    if (tope.equals("828") && !tipoCalculado.isEmpty()) tipoResUn = tipoCalculado;
                     // ============================================================
                     // VALIDACIÓN PARA '!' (Acción 827 - Debe ser Booleano)
                     // ============================================================
@@ -2151,6 +2197,27 @@ public class AnalizadorPrincipal extends JFrame {
 
                     expresionActual.clear();
                     valorDerechoStr = "";
+                }
+                if (ctxUn != null) {
+                    // El resultado del !(...) / ~(...) entra como un operando (temporal) en la expresion de afuera
+                    expresionActual.clear();
+                    expresionActual.addAll((List<Object[]>) ctxUn[0]);
+                    String pref; int codRes;
+                    switch (tipoResUn) {
+                        case "Bin": pref = "TBI"; codRes = -61; break;
+                        case "Oct": pref = "TO"; codRes = -63; break;
+                        case "Hex": pref = "THex".equals("") ? "TH" : "TH"; codRes = -64; break;
+                        case "Boolean": pref = "TB"; codRes = -67; break;
+                        default: pref = "TD"; codRes = -62; break;
+                    }
+                    contUnarioTemp++;
+                    expresionActual.add(new Object[]{codRes, pref + (9000 + contUnarioTemp), tokenActual[2]});
+                    leyendoOperacion = (Boolean) ctxUn[1];
+                    descartarCierreUnario = leyendoOperacion;
+                    valorDerechoStr = (String) ctxUn[2];
+                    tokenIzquierdo = (Object[]) ctxUn[3];
+                    tokenAsignacion = (Object[]) ctxUn[4];
+                    idIzquierdoStr = (String) ctxUn[5];
                 }
                 
                 pilaSintactica.pop();
@@ -2202,8 +2269,8 @@ public class AnalizadorPrincipal extends JFrame {
                         clase2 = objColeccion.clase != null ? objColeccion.clase : "VAR";
                     } else if (idColeccion.startsWith("TV")) {
                         tipo2 = "Variant";
-                    } else if (idColeccion.startsWith("@C")) {
-                        tipo2 = "Cadena";
+                    } else if (idColeccion.startsWith("@C") || idColeccion.startsWith("\"")) {
+                        tipo2 = "Cadena";      // una cadena constante ("abc") se puede recorrer
                     }
 
                     // Normalizamos
@@ -2219,7 +2286,22 @@ public class AnalizadorPrincipal extends JFrame {
                     // Un resultado de funcion, null o una constante no se pueden recorrer (regla 1084)
                     boolean noIterable = idColeccion.equals("null")
                         || (esTemporalNombre(idColeccion) && !idColeccion.startsWith("TV"))
-                        || idColeccion.matches("^[0-9\"'].*|^(true|false)$|^x[bol].*");
+                        || idColeccion.matches("^[0-9'].*|^(true|false)$|^x[bol].*");
+                    // Un elemento de arreglo con todos sus indices (#Da[1,0]) es un escalar: no se puede recorrer
+                    if (!noIterable && objColeccion != null && objColeccion.dimensionArr != null
+                            && !expresionActual.isEmpty() && etiqueta(expresionActual.get(0)).equals("ARR")) {
+                        String txtArr = textoOriginal(expresionActual.get(0));
+                        int prof = 0, indices = 1;
+                        for (char ch : txtArr.toCharArray()) {
+                            if (ch == '[') prof++;
+                            else if (ch == ']') prof--;
+                            else if (ch == ',' && prof == 1) indices++;
+                        }
+                        if (txtArr.contains("[") && indices >= objColeccion.dimensionArr) {
+                            noIterable = true;
+                            lexema = idIteradorFor + " : " + txtArr;
+                        }
+                    }
                     if (noIterable) {
                         String errorMsg = "Regla 1084: '" + idColeccion + "' no es un arreglo";
                         listaRegistroReglas.add(new Object[]{tokenActual[2], "1084", "Manejo de arreglos", "Error", lexema, ambito});
@@ -2274,6 +2356,8 @@ public class AnalizadorPrincipal extends JFrame {
             // =====================================================================
             if (tope.equals("831")) {
                 leyendoOperacion = false;
+                claseActual = "";            // termino la parte de declaracion del for
+                restaurarClaseFor = false;
                 String cve = "1080";
                 String desc = "FOR INICIALIZACION";
                 int ambito = pilaContadorAmbito.peek(); 
@@ -2288,7 +2372,8 @@ public class AnalizadorPrincipal extends JFrame {
                     
                     String lexemaInit = lexemaAsignacionFor + " " + valorDer; 
                   //  System.out.println("bien = Inicialización de for válida: " + lexemaInit);
-                    listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Acept", lexemaInit.trim(), ambito,"id"});
+                    for (int kAsig = 0; kAsig < Math.max(1, asigsFor); kAsig++)
+                        listaRegistroReglas.add(new Object[]{tokenActual[2], cve, desc, "Acept", lexemaInit.trim(), ambito,"id"});
                     
                 } else {
                     // Si nunca pasó por la 811, no hubo '='
@@ -2437,6 +2522,7 @@ public class AnalizadorPrincipal extends JFrame {
             // Acción 834: Validación exclusiva para condiciones (if, while, do-while)
             // =====================================================================
             if (tope.equals("834")) {
+                if (!pilaEstructuraCond.isEmpty()) estructuraEnUso = pilaEstructuraCond.pop();
                 leyendoOperacion = false;
                 
                 if (!expresionActual.isEmpty()) {
@@ -2579,9 +2665,11 @@ public class AnalizadorPrincipal extends JFrame {
 
             // Acción 837: Evalúa el tipo de retorno y valida Regla 14 y 1131
             if (tope.equals("837")){
+                // La linea del return es la de su ultimo token (si no lleva ";" el token actual ya es la "}" de la linea siguiente)
+                Object lineaRet = (i >= 1) ? listaTokens.get(i - 1)[2] : tokenActual[2];
                 leyendoOperacion = false;
                 int ambitoActual = pilaContadorAmbito.isEmpty() ? 0 : pilaContadorAmbito.peek();
-                lineaDelReturn = tokenActual[2].toString();
+                lineaDelReturn = lineaRet.toString();
                 // Si es Procedimiento y tiene return, falla la Regla 14[cite: 13]
                 if (enProcedimiento) {
                     encontroReturn = true;
@@ -2589,8 +2677,8 @@ public class AnalizadorPrincipal extends JFrame {
                     String valorRet = expresionActual.isEmpty() ? "return"
                                     : (expresionActual.size() == 1 ? textoReporte(expresionActual.get(0)) : textoDe(expresionActual));
                     String errorMsg = "Un procedimiento no debe de tener retorno";
-                    listaRegistroReglas.add(new Object[]{tokenActual[2], "1140", "NO RETURN DE PROCEDIMIENTO", "Error", valorRet, ambitoActual,"TVoid"});
-                    listaErroresSemantico2.add(new Object[]{559, errorMsg, "return " + valorRet, "Semantico 2", tokenActual[2]});
+                    listaRegistroReglas.add(new Object[]{lineaRet, "1140", "NO RETURN DE PROCEDIMIENTO", "Error", valorRet, ambitoActual,"TVoid"});
+                    listaErroresSemantico2.add(new Object[]{559, errorMsg, "return " + valorRet, "Semantico 2", lineaRet});
                 } 
                 // Si es Función, validamos que el tipo coincida (Regla 1131)[cite: 13]
                 else if (enFuncion) {
@@ -2641,13 +2729,18 @@ public class AnalizadorPrincipal extends JFrame {
                                 cod = 0;   // Variant (Ajusta si tienes un código específico para Variant en tu léxico)
                             }
 
-                            tokenEvaluado = new Object[]{cod, valorFinal, tokenActual[2]};
+                            tokenEvaluado = new Object[]{cod, valorFinal, lineaRet};
                         }
                     }
                     
                     String tipoRetorno = getTipo(tokenEvaluado);
                     if (expresionActual.size() == 1 && etiqueta(expresionActual.get(0)).equals("VOID")) {
                         tipoRetorno = "Void";      // ej. return copy(@a, @b)
+                    }
+                    // Un id no declarado es Variant (no toma el tipo de su prefijo), igual que en asignaciones y argumentos
+                    if (expresionActual.size() == 1 && etiqueta(expresionActual.get(0)).isEmpty()
+                            && esIdentificadorLexema(valorFinal) && buscarEnTabla(valorFinal) == null) {
+                        tipoRetorno = "Variant";
                     }
                     if (tipoRetorno.isEmpty()) {
                         Identificador id = buscarEnTabla(valorFinal);
@@ -2656,16 +2749,16 @@ public class AnalizadorPrincipal extends JFrame {
                     if (tipoRetorno.isEmpty()) tipoRetorno = "Variant";
 
                     // Regla 1130: la funcion tiene return. Solo en el PRIMER return (antes del 1131)
-                    if (primerReturn) listaRegistroReglas.add(new Object[]{tokenActual[2], "1130", "RETURN DE FUNCION", "Acept", idMetodoActual, ambitoActual, "return"});
+                    if (primerReturn) listaRegistroReglas.add(new Object[]{lineaRet, "1130", "RETURN DE FUNCION", "Acept", idMetodoActual, ambitoActual, "return"});
 
                     String valorRetorno = (expresionActual.size() == 1) ? textoReporte(expresionActual.get(0)) : valorFinal;
                     // Regla 1131: Comparación de tipos
                     if (tipoMetodoActual.equals(tipoRetorno) || tipoMetodoActual.equals("Variant")|| tipoRetorno.equals("Variant")) {
-                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1131", "Tipo de retorno igual", "Acept", valorRetorno, ambitoActual, tipoConT(tipoMetodoActual)});
+                        listaRegistroReglas.add(new Object[]{lineaRet, "1131", "Tipo de retorno igual", "Acept", valorRetorno, ambitoActual, tipoConT(tipoMetodoActual)});
                     } else {
                         String errorMsg = "El tipo de retorno (" + tipoRetorno + ") no coincide con la función (" + tipoMetodoActual + ")";
-                        listaRegistroReglas.add(new Object[]{tokenActual[2], "1131", "Tipo de retorno igual", "Error", valorRetorno, ambitoActual, tipoConT(tipoMetodoActual)});
-                        listaErroresSemantico2.add(new Object[]{560, errorMsg, "return " + valorFinal, "Semantico 2", tokenActual[2]});
+                        listaRegistroReglas.add(new Object[]{lineaRet, "1131", "Tipo de retorno igual", "Error", valorRetorno, ambitoActual, tipoConT(tipoMetodoActual)});
+                        listaErroresSemantico2.add(new Object[]{560, errorMsg, "return " + valorFinal, "Semantico 2", lineaRet});
                     }
                 }
                 
@@ -3262,8 +3355,10 @@ public class AnalizadorPrincipal extends JFrame {
                 leyendoOperacion = true;
                 expresionActual.clear();
                 lineaOperacionActual = (int) tokenActual[2]; // Asumiendo que [2] es la línea
+                opBase = opPend.clone();
                 if (parteForClasico == 1) {
                     huboAsignacionFor = true;
+                    asigsFor++;
                     // Guardamos la primera mitad (ej. "#Dx =")
                     lexemaAsignacionFor = idIzquierdoStr + " =";
                 }
@@ -3311,7 +3406,7 @@ public class AnalizadorPrincipal extends JFrame {
                     }
                 }
                 // ==========================================================
-                if (quitarDeclaracionFor) claseActual = "";
+                if (quitarDeclaracionFor) { claseActual = ""; restaurarClaseFor = true; }
 
                 pilaSintactica.pop();
                 continue;
@@ -3356,8 +3451,36 @@ public class AnalizadorPrincipal extends JFrame {
                 int indexInicioCuadruplos = listaCuadruplos.size(); // Contamos cuántos hay antes
                 // 1. Guardamos el estado exacto de los contadores ANTES de la línea
                 int[] contadoresAntes = contadoresTemporales.clone();
+                int[] opAntes = opPend.clone();
+                int opVarAntes = opOperandoVar;
                 ladoDerechoVoid = expresionActual.size() == 1 && etiqueta(expresionActual.get(0)).equals("VOID");
                 generarCuadruplosRecursivo(prefijaCompleta);
+                // Ternario (c ? a : b): el valor es la condicion, pero las operaciones de las ramas tambien generan temporales
+                if (i < listaTokens.size() && String.valueOf(listaTokens.get(i)[1]).equals("?")) {
+                    List<Object[]> rama = new ArrayList<>();
+                    List<List<Object[]>> ramas = new ArrayList<>();
+                    int prof = 0; boolean simple = true;
+                    for (int q = i + 1; q < listaTokens.size(); q++) {
+                        Object[] tq = listaTokens.get(q);
+                        String lq = String.valueOf(tq[1]);
+                        if (lq.equals("(") || lq.equals("[")) prof++;
+                        else if (lq.equals(")") || lq.equals("]")) { prof--; if (prof < 0) break; }
+                        if (prof == 0 && (lq.equals(";") || lq.equals("}") || lq.equals("$"))) break;
+                        if (prof == 0 && lq.equals(":")) { ramas.add(rama); rama = new ArrayList<>(); continue; }
+                        if (lq.equals("[") || lq.equals("]") || lq.equals(",") || lq.equals("?")
+                                || (lq.equals("(") && q > 0 && esUnIdentificador(Integer.parseInt(String.valueOf(listaTokens.get(q - 1)[0]))))) simple = false;
+                        rama.add(tq);
+                    }
+                    ramas.add(rama);
+                    if (simple) {
+                        for (List<Object[]> r : ramas) {
+                            if (r.size() < 3) continue;
+                            List<Object[]> pref = convertirAPrefijo(new ArrayList<>(r));
+                            indiceGlobalPrefijo = 0;
+                            generarCuadruplosRecursivo(pref);
+                        }
+                    }
+                }
                 ladoDerechoVoid = false;
                 ladoIzquierdoArreglo = false;
 
@@ -3383,14 +3506,17 @@ public class AnalizadorPrincipal extends JFrame {
                 }
 
                 // Guardamos: [Linea, ArregloContadores, AsignacionFinal]
-                if (!ignorarParaExcel){
+                if (!ignorarParaExcel || parteForClasico == 1){
                     // 3. Calculamos la diferencia: cuántos se hicieron SOLAMENTE en esta línea
                     int[] contadoresSoloEstaLinea = new int[9];
                     for (int j = 0; j < 9; j++) {
-                        contadoresSoloEstaLinea[j] = contadoresTemporales[j] - contadoresAntes[j];
+                        contadoresSoloEstaLinea[j] = contadoresTemporales[j] - contadoresAntes[j]
+                                + (opAntes[j] - opBase[j]);      // operaciones dentro de indices/argumentos de la sentencia
                     }
+                    contadoresSoloEstaLinea[VAR] = Math.max(0, contadoresSoloEstaLinea[VAR] - (opOperandoVar - opVarAntes));
                     listaResumenOperaciones.add(new Object[]{lineaOperacionActual, contadoresSoloEstaLinea, asignacionFinal});
                 }
+                opBase = opPend.clone();
                 idIzquierdoStr = "";
                 ultimoTemporal = "";
                 valorDerechoStr = ""; // <-- ¡Aquí se reinicia!
@@ -3417,12 +3543,25 @@ public class AnalizadorPrincipal extends JFrame {
 
                 registroOperaciones.add(resultadoParaConsola);
                 //System.out.println(resultadoParaConsola);
+                // for (#Di = 0, #Dj = 20; ...): despues de la primera asignacion el siguiente id tambien se declara
+                if (restaurarClaseFor) { claseActual = "VAR"; restaurarClaseFor = false; }
                 pilaSintactica.pop();
                 continue;
             }
 
             if (tope.equals(terminalActual)){
-                if (leyendoOperacion) {
+                if (terminalActual.equals("{")) profLlavesSw++;
+                else if (terminalActual.equals("}")) {
+                    profLlavesSw--;
+                    if (!pilaSwitch.isEmpty() && (Integer) pilaSwitch.peek()[2] == profLlavesSw) {
+                        Object[] ant = pilaSwitch.pop();
+                        tipoSwitchActual = (String) ant[0];
+                        lexemaSwitchActual = (String) ant[1];
+                    }
+                }
+                if (leyendoOperacion && descartarCierreUnario && terminalActual.equals(")")) {
+                    descartarCierreUnario = false;      // el ')' de un !( ... ) / ~( ... ) ya se uso como cierre
+                } else if (leyendoOperacion) {
                     // Los indices de arreglo ya no usan un buffer aparte: cada arreglo
                     // abre su contexto en pilaCtx y graba en expresionActual.
                     expresionActual.add(new Object[]{tokenActual[0], tokenActual[1], tokenActual[2]});
@@ -3646,6 +3785,7 @@ public class AnalizadorPrincipal extends JFrame {
             System.out.println("El análisis terminó con errores (Pila no vacía).");
         }
         //CompilacionCuadruplos();
+        generarCuadruplosEnsamblador();
         actualizarListaErrores();
         //imprimirEstadisticasNoTerminales();
         // for (Object[] elemento : ListaCambiosAmbito) {
@@ -3704,6 +3844,46 @@ public class AnalizadorPrincipal extends JFrame {
            op.equals("&=") || op.equals("^=") || op.equals("<<=") || 
            op.equals(">>=") || op.equals(">>>=") || op.equals("=>");
 }
+
+    // Un signo unario pegado a una constante numerica (-3, +2.5) es una sola constante, no una operacion
+    private void plegarSignos(List<Object[]> e) {
+        for (int k = 0; k + 1 < e.size(); k++) {
+            String l = String.valueOf(e.get(k)[1]);
+            if (!l.equals("-") && !l.equals("+")) continue;
+            boolean unario = k == 0;
+            if (!unario) {
+                String ant = String.valueOf(e.get(k - 1)[1]);
+                unario = ant.equals("(") || ant.equals("[") || ant.equals(",") || obtenerPrecedencia(ant) != -1;
+            }
+            if (!unario) continue;
+            Object[] sig = e.get(k + 1);
+            String lx = String.valueOf(sig[1]);
+            boolean numero = lx.matches("^[0-9].*") && etiqueta(sig).isEmpty();
+            if (!numero) continue;
+            Object[] nuevo = sig.clone();
+            nuevo[1] = l + lx;
+            e.set(k + 1, nuevo);
+            e.remove(k);
+        }
+    }
+
+    // Quita parentesis que envuelven toda la expresion: ((x)) -> x, (a + b) -> a + b
+    private static void quitarParentesisExtra(List<Object[]> e) {
+        while (e.size() >= 3 && String.valueOf(e.get(0)[1]).equals("(")
+                && String.valueOf(e.get(e.size() - 1)[1]).equals(")")) {
+            int prof = 0; boolean envuelve = true;
+            for (int k = 0; k < e.size(); k++) {
+                String l = String.valueOf(e.get(k)[1]);
+                if (l.equals("(")) prof++;
+                else if (l.equals(")")) { prof--; if (prof == 0 && k < e.size() - 1) { envuelve = false; break; } }
+            }
+            if (!envuelve || prof != 0) return;
+            e.remove(e.size() - 1);
+            e.remove(0);
+        }
+        // caso "( x" sin cierre (el ')' ya lo consumio el unario)
+        if (e.size() == 2 && String.valueOf(e.get(0)[1]).equals("(")) e.remove(0);
+    }
 
     public List<Object[]> convertirAPrefijo(List<Object[]> infija) {
         List<Object[]> invertida = new ArrayList<>();
@@ -3825,7 +4005,7 @@ public class AnalizadorPrincipal extends JFrame {
             int tipoResultado = evaluarOperacion(tipo1, tipo2, lexemaActual);
             if (val1.equals("TVoid") || val2.equals("TVoid")) {
                 // Operar con un valor void es error de Semantica 1; el resultado queda Variant
-                listaErroresSemantico1.add(new Object[]{544, "Incompatibilidad de tipos: no se puede operar con un valor void",
+                listaErroresSemantico1.add(new Object[]{codigoErrorSem1(lexemaActual), "Incompatibilidad de tipos: no se puede operar con un valor void",
                                                         val1 + " " + lexemaActual + " " + val2, "Semantico1", tokenActual[2]});
                 tipoResultado = VAR;
             }
@@ -3836,11 +4016,11 @@ public class AnalizadorPrincipal extends JFrame {
             if (tipoResultado == E) {
                 String descripcion = "Incompatibilidad de tipos: no se puede aplicar '" + lexemaActual + 
                                 "' entre " + NOMBRES[tipo1] + " y " + NOMBRES[tipo2];
-                Object[] datosError = {544, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico1", tokenActual[2]};
+                Object[] datosError = {codigoErrorSem1(lexemaActual), descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico1", tokenActual[2]};
                 listaErroresSemantico1.add(datosError);
                 
                 
-                // Guardas el error en tu lista global para imprimirlo en tu tabla/Excel
+                // Guardasel error en tu lista global para imprimirlo en tu tabla/Excel
                 // Object[] error = { ... }; 
                 // listaErroresSemantico.add(error);
                 
@@ -3853,6 +4033,7 @@ public class AnalizadorPrincipal extends JFrame {
             // Se genera el temporal correcto (Si hubo error, generará un "TVX")
             String prefijoTemp = PREFIJOS_TEMP[tipoResultado];
             contadoresTemporales[tipoResultado]++;
+            opPend[tipoResultado]++;
             int numeroActual = contadoresTemporales[tipoResultado]; 
 
             String temporalAsignado = prefijoTemp + numeroActual;
@@ -3895,7 +4076,7 @@ public class AnalizadorPrincipal extends JFrame {
                 
                 // 2. Si la operación no dio Error (E), verificamos que el resultado quepa en el destino
                 // El resultado de la operacion debe caber en el destino (ej. #Dx /= 2 da Real: no cabe en Dec)
-                if (tipoResultadoOp != E && tipoResultadoOp != VAR && cabeEnTipo(tipoDestino, tipoResultadoOp)) {
+                if (tipoResultadoOp != E && cabeEnTipo(tipoDestino, tipoResultadoOp)) {   // Variant cabe en todo
                     esCompatible = true;
                 }
             }
@@ -3920,8 +4101,16 @@ public class AnalizadorPrincipal extends JFrame {
             if (!esCompatible) {
                 String descripcion = "Incompatibilidad de tipos en asignación: no se puede aplicar '" + lexemaActual + 
                                     "' entre " + NOMBRES[tipoDestino] + " y " + NOMBRES[tipoValor];
-                Object[] datosError = {544, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico1", tokenActual[2]};
-                listaErroresSemantico1.add(datosError);
+                // Semantica 1 (552): solo '=' y '+=' cuando el valor no cabe en el destino.
+                // -=, *=, /=, ... solo marcan el error de Semantica 2 (1021/1022), como la prueba de referencia.
+                if (lexemaActual.equals("=") || lexemaActual.equals("=>") || (lexemaActual.equals("+=") && !cabeEnTipo(tipoDestino, tipoValor))) {
+                    listaErroresSemantico1.add(new Object[]{552, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico1", tokenActual[2]});
+                } else {
+                    // Sin error de Semantica 1: el fallo se reporta como error de Semantica 2 (regla 2, CVE 1021/1022)
+                    if (!ignorarParaExcel) listaErroresSemantico2.add(new Object[]{Integer.parseInt(cveRegla2),
+                        "Regla 2 CVE " + cveRegla2 + " FALLIDA: La asignación no es compatible.",
+                        val1 + " " + lexemaActual + " " + val2, "Semantico 2", tokenActual[2]});
+                }
                 // REGISTRO REGLA 2 (FALLA)
                 //System.out.println("error " + descripcion);
                 if (!ignorarParaExcel) listaRegistroReglas.add(new Object[]{
@@ -3935,6 +4124,11 @@ public class AnalizadorPrincipal extends JFrame {
                 });
             }
             else {
+                if (lexemaActual.equals("+=") && !cabeEnTipo(tipoDestino, tipoValor)) {
+                    String descripcion = "Incompatibilidad de tipos en asignación: no se puede aplicar '" + lexemaActual +
+                                        "' entre " + NOMBRES[tipoDestino] + " y " + NOMBRES[tipoValor];
+                    listaErroresSemantico1.add(new Object[]{552, descripcion, val1 + " " + lexemaActual +" "+ val2, "Semantico1", tokenActual[2]});
+                }
                 // REGISTRO REGLA 2 (CUMPLE)
                 //System.out.println("bien = Asignación compatible: " + lexemaCompleto);
                 if (!ignorarParaExcel) listaRegistroReglas.add(new Object[]{
@@ -3962,6 +4156,7 @@ public class AnalizadorPrincipal extends JFrame {
             int tipoLexema = obtenerTipoToken(tokenActual);
             if (tipoLexema == VAR){
                 contadoresTemporales[VAR]++;
+                opOperandoVar++;
                 int numeroActual = contadoresTemporales[VAR]; 
                 
                 // 2. Generamos la cadena del temporal (ej. "TV" + 1 -> "TV1")
@@ -4020,6 +4215,19 @@ public class AnalizadorPrincipal extends JFrame {
             case "cadena": return CAD; // 6
             case "boolean": return BOOL; // 7
             default: return VAR; // 8
+        }
+    }
+
+    private static int codigoErrorSem1(String op) {
+        switch (op) {
+            case "+": case "+=": return 545;
+            case "-": case "-=": return 546;
+            case "*": case "*=": return 547;
+            case "/": case "/=": return 548;
+            case "<": case "<=": case ">": case ">=": case "==": case "!=": return 549;
+            case "&&": case "||": case "&": case "|": case "#": return 550;
+            case "=": case "=>": return 552;
+            default: return 551;   // %, <<, >>, ^ ...
         }
     }
 
@@ -4094,6 +4302,966 @@ public class AnalizadorPrincipal extends JFrame {
     }
     
 
+
+    // =====================================================================================
+    // CUADRUPLOS: simulacion de ensamblador (E | A | V1 | V2 | Resultado)
+    // Se genera despues del analisis, recorriendo los tokens. Si hubo cualquier error, los
+    // cuadruplos se detienen en la primera linea con error (no importa lo que venga despues).
+    // =====================================================================================
+    public List<String[]> listaCuadruplosEns = new ArrayList<>();
+    public List<Integer> listaAmbitoCuad = new ArrayList<>();   // ambito de cada fila de cuadruplos (para Cont-CI)
+    public int totalAmbitosCuad = 1;                            // cuantos ambitos tiene el programa (0..n)
+
+    // Linea de la '}' que cierra el main() de la def que empieza en la linea dada
+    private int lineaCierreDef(int lineaDef) {
+        int i = 0;
+        while (i < listaTokens.size()) {
+            Object[] t = listaTokens.get(i);
+            int ln; try { ln = (int) Double.parseDouble(String.valueOf(t[2])); } catch (Exception ex) { i++; continue; }
+            if (ln >= lineaDef && String.valueOf(t[1]).equals("main")) break;
+            i++;
+        }
+        int nivel = 0;
+        for (; i < listaTokens.size(); i++) {
+            String l = String.valueOf(listaTokens.get(i)[1]);
+            if (l.equals("{")) nivel++;
+            else if (l.equals("}")) {
+                nivel--;
+                if (nivel == 0) {
+                    try { return (int) Double.parseDouble(String.valueOf(listaTokens.get(i)[2])); } catch (Exception ex) { return lineaDef; }
+                }
+            }
+        }
+        return lineaDef;
+    }
+
+    private void generarCuadruplosEnsamblador() {
+        listaCuadruplosEns.clear();
+        listaAmbitoCuad.clear();
+        totalAmbitosCuad = 1;
+        // 1. Primera linea con error (lexico, sintactico, ambito, semantica 1, 2 o 3)
+        int lineaError = Integer.MAX_VALUE;
+        boolean inclusivoDef = false;
+        List<List<Object[]>> todas = Arrays.asList(listaErrores, listaErroresSintactico, listaErroresSemantico,
+                listaErroresSemantico1, listaErroresSemantico2, listaErroresSemantico3);
+        for (List<Object[]> lista : todas) {
+            for (Object[] e : lista) {
+                if (e == null || e.length < 5) continue;
+                try {
+                    int le = (int) Double.parseDouble(String.valueOf(e[4]).trim());
+                    // "la def no tiene return" (561) se detecta al cerrar la def: la def completa si se genera
+                    if (String.valueOf(e[0]).replace(".0", "").equals("561")) {
+                        int cierre = lineaCierreDef(le);
+                        if (cierre > le && cierre < lineaError) { lineaError = cierre; inclusivoDef = true; }
+                        continue;
+                    }
+                    if (le < lineaError) inclusivoDef = false;
+                    lineaError = Math.min(lineaError, le);
+                } catch (Exception ex) { /* sin linea */ }
+            }
+        }
+        // Si el primer error es de Semantica 1 (incompatibilidad de tipos), los cuadruplos llegan hasta el punto
+        // exacto del error (la operacion se genera y la asignacion que falla ya no). Con cualquier otro
+        // error se corta antes de la linea del error.
+        boolean errorSem1 = inclusivoDef;
+        for (Object[] e : listaErroresSemantico1) {
+            try {
+                if (e != null && e.length >= 5 && (int) Double.parseDouble(String.valueOf(e[4]).trim()) == lineaError) errorSem1 = true;
+            } catch (Exception ex) { /* sin linea */ }
+        }
+        List<Object[]> todos = new ArrayList<>();
+        List<Object[]> toks = new ArrayList<>();
+        for (Object[] t : listaTokens) {
+            if (String.valueOf(t[1]).equals("$") && String.valueOf(t[0]).equals("0")) break;   // token de fin
+            int ln;
+            try { ln = (int) Double.parseDouble(String.valueOf(t[2])); } catch (Exception ex) { continue; }
+            todos.add(t);
+            if (ln > lineaError || (ln == lineaError && !errorSem1)) continue;
+            toks.add(t);
+        }
+        // Pasada 1: programa completo, solo para saber cuantos temporales de operaciones hay en total
+        // (los temporales propios de los cuadruplos siguen despues de esos)
+        GeneradorCuadruplos g0 = new GeneradorCuadruplos(todos, null, true);
+        try { g0.programa(); } catch (RuntimeException fin) { /* programa incompleto */ }
+        // Pasada 2: la que se muestra (se detiene en el error)
+        GeneradorCuadruplos g = new GeneradorCuadruplos(toks, g0.cont1.clone(), false);
+        try {
+            g.programa();
+        } catch (RuntimeException fin) {
+            // Se acabaron los tokens validos (error o fin): los cuadruplos se detienen aqui
+        }
+        listaCuadruplosEns.addAll(g.terminar());
+        listaAmbitoCuad.clear();
+        listaAmbitoCuad.addAll(g.ambitoFilas);
+        totalAmbitosCuad = Math.max(g0.numAmb, g.numAmb) + 1;
+    }
+
+    // Valor de un operando dentro de los cuadruplos (texto + tipo)
+    static class ValCuad {
+        String txt; int tipo;
+        ValCuad(String txt, int tipo) { this.txt = txt; this.tipo = tipo; }
+        boolean esTemporal() { return txt.matches("^T(Bin|Dec|Oct|Hex|Real|exp|Cadena|Boolean|Variant)\\d+$") || txt.matches("^TD[#$\u00bf@\u00a1].*"); }
+    }
+
+    // Una estructura abierta en la pila de cuadruplos (if, while, for, do, switch)
+    static class EstructuraCuad {
+        String tipo;          // If, Wil, For, Do, Swi
+        String etqSalida;     // a donde salta un break
+        EstructuraCuad(String tipo, String etqSalida) { this.tipo = tipo; this.etqSalida = etqSalida; }
+    }
+
+    class GeneradorCuadruplos {
+        private final String[] NOMBRES_T = {"TBin", "TDec", "TOct", "THex", "TReal", "Texp", "TCadena", "TBoolean", "TVariant"};
+        private final List<Object[]> toks;
+        private int pos = 0;
+        private final List<String[]> filas = new ArrayList<>();
+        // Temporales de las operaciones y funciones nativas (los de Semantica 1), en orden de aparicion
+        final int[] cont1 = new int[9];
+        // Temporales propios de los cuadruplos (ARR, CALL, return, switch, for-each): van despues
+        private final int[] cont2 = new int[9];
+        private int contEtiquetas = 0;
+        // Pila de estructuras: la de arriba es la que se esta trabajando ("lo que tienes en la mano")
+        private final Deque<EstructuraCuad> pilaEstructuras = new ArrayDeque<>();
+        // Pila de metodos (para el tipo del temporal del return)
+        private final Deque<String> pilaMetodosCuad = new ArrayDeque<>();
+
+        private final int[] base;            // temporales de operaciones del programa completo (pasada 1)
+        private final boolean sinParar;      // pasada 1: no se detiene por errores de tipos
+        private int modo = 0;                // 0 normal, 1 = ramas de un ternario (cuenta, no emite), 2 = Console (ni cuenta ni emite)
+        GeneradorCuadruplos(List<Object[]> toks, int[] base, boolean sinParar) {
+            this.toks = toks; this.base = base; this.sinParar = sinParar;
+        }
+
+        // ------------------------------------------------------------- tokens
+        private String lex(int k) { return (pos + k < toks.size()) ? String.valueOf(toks.get(pos + k)[1]) : "\u0000EOF"; }
+        private String lex() { return lex(0); }
+        private int cod(int k) {
+            if (pos + k >= toks.size()) return 1;
+            try { return (int) Double.parseDouble(String.valueOf(toks.get(pos + k)[0])); } catch (Exception e) { return 1; }
+        }
+        private Object[] sig() {
+            if (pos >= toks.size()) throw new RuntimeException("fin de tokens");
+            return toks.get(pos++);
+        }
+        private void esperar(String l) {
+            if (!lex().equals(l)) throw new RuntimeException("se esperaba " + l);
+            pos++;
+        }
+        private boolean esId(int k) { int c = cod(k); return (c <= -60 && c >= -67) || c == -142; }
+        private boolean esConstante(int k) {
+            int c = cod(k);
+            return (c <= -53 && c >= -59) || c == -69 || c == -70 || c == -71;
+        }
+        private boolean esNativa(String l) {
+            switch (l.toLowerCase()) {
+                case "clear": case "sqrt": case "pow": case "sqrtv": case "strlen": case "concat": case "copy":
+                case "val": case "str": case "sin": case "cos": case "tan": case "chr": case "pred": case "succ":
+                case "inc": case "dec": case "sqr":
+                    return !l.startsWith("#") && !l.startsWith("@");
+                default: return false;
+            }
+        }
+
+        // ------------------------------------------------------------- emision
+        private boolean filaDeCall = false;
+        // Ambitos, numerados igual que en el analisis: main = 0 y cada def, reg o for abre uno nuevo
+        int numAmb = 0;
+        private final Deque<Integer> pilaAmb = new ArrayDeque<>(Collections.singletonList(0));
+        final List<Integer> ambitoFilas = new ArrayList<>();
+        private void emitir(String e, String a, String v1, String v2, String r) {
+            boolean esCabeza = a.equals("CALL") || a.equals("ARR");
+            if (modo == 1) return;
+            if (modo == 2 && !(esCabeza || (a.isEmpty() && e.isEmpty() && filaDeCall))) return;
+            filas.add(new String[]{e, a, v1, v2, r});
+            ambitoFilas.add(pilaAmb.isEmpty() ? 0 : pilaAmb.peek());
+            filaDeCall = esCabeza || (a.isEmpty() && e.isEmpty() && v2.isEmpty() && r.isEmpty() && filaDeCall);
+        }
+        private void etiqueta(String etq) { emitir(etq, "", "", "", ""); }
+        // Cada estructura lleva su propio consecutivo: if-E1.., Whi-E1.., For-E1.., do-E1.., Switch-E1..
+        private final Map<String, Integer> contEtiquetasPorTipo = new HashMap<>();
+        private String nuevaEtiqueta(String prefijo) {
+            String nombre;
+            switch (prefijo) {
+                case "If": nombre = "if"; break;
+                case "Wil": nombre = "Whi"; break;
+                case "Do": nombre = "do"; break;
+                case "Swi": nombre = "Switch"; break;
+                default: nombre = prefijo;          // For
+            }
+            int k = contEtiquetasPorTipo.merge(nombre, 1, Integer::sum);
+            contEtiquetas++;
+            return nombre + "-E" + k;
+        }
+        // Temporales: un solo consecutivo por tipo, en el orden en que aparecen en los cuadruplos
+        // (como el ensamblador: no puede haber dos temporales con el mismo nombre)
+        private String temp1(int tipo) {
+            if (modo != 0) return "T?";                   // ramas de un ternario: no generan cuadruplos
+            cont1[tipo]++;
+            return NOMBRES_T[tipo] + cont1[tipo];
+        }
+        private String temp2(int tipo) { return temp1(tipo); }
+
+        List<String[]> terminar() {
+            for (String[] f : filas) {
+                for (int c = 0; c < f.length; c++) {
+                    if (f[c] != null && f[c].startsWith("\u0001")) {
+                        String[] p = f[c].substring(1).split(":");
+                        int tipo = Integer.parseInt(p[0]);
+                        f[c] = NOMBRES_T[tipo] + (base[tipo] + Integer.parseInt(p[1]));
+                    }
+                }
+            }
+            return filas;
+        }
+
+        // ------------------------------------------------------------- tipos
+        private int tipoId(String l) {
+            if (l.startsWith("#B")) return BIN;
+            if (l.startsWith("#D")) return DEC;
+            if (l.startsWith("#O")) return OCT;
+            if (l.startsWith("#X")) return HEX;
+            if (l.startsWith("$")) return REAL;
+            if (l.startsWith("¿")) return EXP;
+            if (l.startsWith("@")) return CAD;
+            if (l.startsWith("¡")) return BOOL;
+            return VAR;
+        }
+        private int tipoConstante(Object[] tok) {
+            String t = getTipo(tok);
+            if (t.isEmpty()) return VAR;
+            return convertirStringAInt(t);
+        }
+        private boolean esEnteroTipo(int t) { return t == BIN || t == DEC || t == OCT || t == HEX; }
+        private int tipoOperacion(int t1, int t2, String op) {
+            switch (op) {
+                case "<": case ">": case "<=": case ">=": case "==": case "!=":
+                case "&&": case "||": case "&": case "|":
+                    return BOOL;
+                default:
+                    int r = evaluarOperacion(t1, t2, op);
+                    return r == E ? VAR : r;
+            }
+        }
+        // Tipo de salida de una funcion nativa (mismas reglas que Semantica 3); -1 = void
+        private int tipoNativa(String f, List<ValCuad> args) {
+            int p1 = args.isEmpty() ? VAR : args.get(0).tipo;
+            switch (f) {
+                case "clear": case "copy": case "val": return -1;
+                case "sqrt": case "sqrtv": case "sin": case "cos": case "tan": case "sqr": return EXP;
+                case "pow": return esEnteroTipo(p1) ? p1 : EXP;
+                case "strlen": return DEC;
+                case "concat": case "chr": return CAD;
+                case "str": return BOOL;
+                case "pred": case "succ": return p1 == REAL ? REAL : EXP;
+                case "inc": case "dec": return esEnteroTipo(p1) ? p1 : DEC;
+                default: return VAR;
+            }
+        }
+
+        // ------------------------------------------------------------- programa
+        void programa() {
+            declaraciones();
+            metodoMain("Main");
+        }
+
+        // A1: var, reg, def, constantes ... hasta "main"
+        private void declaraciones() {
+            while (true) {
+                String l = lex();
+                if (l.equals("main")) return;
+                if (l.equals("var")) { saltarHasta(";"); continue; }
+                if (l.equals("reg")) { saltarBloqueReg(); numAmb++; continue; }   // la definicion del registro tiene su ambito
+                if (l.equals("def")) {
+                    sig();                                   // def
+                    String nombre = String.valueOf(sig()[1]);
+                    pilaAmb.push(++numAmb);                  // la def abre su ambito (parametros y cuerpo)
+                    if (lex().equals("(")) saltarParentesis();
+                    pilaMetodosCuad.push(nombre);
+                    declaraciones();                         // var y def anidadas de la def
+                    metodoMain(nombre);
+                    pilaMetodosCuad.pop();
+                    pilaAmb.pop();
+                    if (lex().equals(";")) sig();
+                    continue;
+                }
+                if (l.equals("\u0000EOF")) throw new RuntimeException("fin");
+                saltarHasta(";");                            // constantes: id = valor, ...;
+            }
+        }
+
+        // main ( ) { STATU A2 }
+        private void metodoMain(String nombre) {
+            esperar("main");
+            esperar("(");
+            esperar(")");
+            emitir("", "Metodo", nombre.equals("Main") ? "main" : nombre, "", "");
+            esperar("{");
+            listaSentencias();
+            esperar("}");
+            emitir("", "FINMET", nombre.equals("Main") ? "main" : nombre, "", "");
+        }
+
+        private void saltarHasta(String fin) {
+            while (!lex().equals(fin)) sig();
+            sig();
+        }
+        private void saltarParentesis() {
+            int nivel = 0;
+            do {
+                String l = String.valueOf(sig()[1]);
+                if (l.equals("(")) nivel++;
+                else if (l.equals(")")) nivel--;
+            } while (nivel > 0);
+        }
+        private void saltarBloqueReg() {
+            sig();                                           // reg
+            while (!lex().equals("{")) sig();
+            int nivel = 0;
+            do {
+                String l = String.valueOf(sig()[1]);
+                if (l.equals("{")) nivel++;
+                else if (l.equals("}")) nivel--;
+            } while (nivel > 0);
+        }
+
+        // ------------------------------------------------------------- sentencias
+        // STATU A2: sentencias separadas por ';'
+        private void listaSentencias() {
+            while (true) {
+                String l = lex();
+                if (l.equals("}") || l.equals("\u0000EOF")) return;
+                if (l.equals(";")) { sig(); continue; }
+                int antes = pos;
+                sentencia();
+                if (pos == antes) throw new RuntimeException("sin avance");
+                if (lex().equals(";")) { sig(); continue; }
+                return;
+            }
+        }
+
+        private void sentencia() {
+            String l = lex();
+            switch (l) {
+                case "{": sig(); listaSentencias(); esperar("}"); return;
+                case ";": return;                       // sentencia vacia: for (...);
+                case "if": sentenciaIf(); return;
+                case "while": sentenciaWhile(); return;
+                case "do": sentenciaDo(); return;
+                case "for": sentenciaFor(); return;
+                case "switch": sentenciaSwitch(); return;
+                case "return": sentenciaReturn(); return;
+                case "break": sig(); saltoBreak(); return;
+                case "Console.log":
+                case "Console.read":
+                {
+                    // Entrada/salida: CALL Console.log / argumentos -> void
+                    String nombreConsola = String.valueOf(sig()[1]);
+                    esperar("(");
+                    List<ValCuad> argsConsola = new ArrayList<>();
+                    if (!lex().equals(")")) {
+                        argsConsola.add(expresion());
+                        while (lex().equals(",")) { sig(); argsConsola.add(expresion()); }
+                    }
+                    esperar(")");
+                    emitir("", "CALL", nombreConsola, "", "");
+                    filasArgumentos(argsConsola, "void");
+                    return;
+                }
+                default:
+                    expresion();
+            }
+        }
+
+        private void saltoBreak() {
+            for (EstructuraCuad e : pilaEstructuras) {
+                if (e.etqSalida != null) { emitir("", "JMP", "", "", e.etqSalida); return; }
+            }
+        }
+
+        // Una condicion que es un solo valor (id o constante) se compara contra true: == v true T
+        private ValCuad condicion(ValCuad c) {
+            if (c.esTemporal()) return c;
+            String t = temp2(BOOL);
+            emitir("", "==", c.txt, "true", t);
+            return new ValCuad(t, BOOL);
+        }
+
+        // Mira (sin consumir) si despues del cuerpo que sigue no viene otro elseif/else
+        private boolean ultimoSinContinuacion() {
+            int k = 0;
+            if (lex(0).equals("{")) {
+                int nivel = 0;
+                while (pos + k < toks.size()) {
+                    String l = lex(k);
+                    if (l.equals("{")) nivel++;
+                    else if (l.equals("}")) { nivel--; if (nivel == 0) { k++; break; } }
+                    k++;
+                }
+                String sg = lex(k);
+                return !(sg.equals("elseif") || sg.equals("else"));
+            }
+            return false;
+        }
+
+        // if (c) S [elseif (c) S]* [else S]
+        private void sentenciaIf() {
+            esperar("if");
+            esperar("(");
+            ValCuad c = condicion(expresion());
+            esperar(")");
+            String etqFalso = nuevaEtiqueta("If");
+            emitir("", "JF", c.txt, "", etqFalso);
+            EstructuraCuad est = new EstructuraCuad("If", null);
+            pilaEstructuras.push(est);
+            sentencia();
+            String etqFin = null;
+            while (lex().equals("elseif") || lex().equals("else")) {
+                if (etqFin == null) etqFin = nuevaEtiqueta("If");
+                emitir("", "JMP", "", "", etqFin);
+                etiqueta(etqFalso);
+                if (lex().equals("elseif")) {
+                    sig();
+                    esperar("(");
+                    ValCuad c2 = condicion(expresion());
+                    esperar(")");
+                    etqFalso = ultimoSinContinuacion() ? etqFin : nuevaEtiqueta("If");
+                    emitir("", "JF", c2.txt, "", etqFalso);
+                    sentencia();
+                    if (etqFalso.equals(etqFin)) { etqFalso = null; }
+                } else {
+                    sig();
+                    etqFalso = null;
+                    sentencia();
+                    break;
+                }
+            }
+            if (etqFalso != null) etiqueta(etqFalso);
+            if (etqFin != null) etiqueta(etqFin);
+            pilaEstructuras.pop();
+        }
+
+        // Wil-Ei: c ; JF c Wil-Ej ; S ; JMP Wil-Ei ; Wil-Ej:
+        private void sentenciaWhile() {
+            esperar("while");
+            String etqInicio = nuevaEtiqueta("Wil");
+            etiqueta(etqInicio);
+            esperar("(");
+            ValCuad c = condicion(expresion());
+            esperar(")");
+            String etqFin = nuevaEtiqueta("Wil");
+            emitir("", "JF", c.txt, "", etqFin);
+            pilaEstructuras.push(new EstructuraCuad("Wil", etqFin));
+            sentencia();
+            emitir("", "JMP", "", "", etqInicio);
+            etiqueta(etqFin);
+            pilaEstructuras.pop();
+        }
+
+        // Do-Ei: S ; c ; JT c Do-Ei
+        private void sentenciaDo() {
+            esperar("do");
+            String etqInicio = nuevaEtiqueta("Do");
+            etiqueta(etqInicio);
+            pilaEstructuras.push(new EstructuraCuad("Do", null));
+            sentencia();
+            if (lex().equals(";")) sig();
+            esperar("while");
+            esperar("(");
+            ValCuad c = condicion(expresion());
+            esperar(")");
+            emitir("", "JT", c.txt, "", etqInicio);
+            pilaEstructuras.pop();
+        }
+
+        // for (ini ; c ; inc) S   y   for (id : arreglo) S
+        private void sentenciaFor() {
+            esperar("for");
+            esperar("(");
+            pilaAmb.push(++numAmb);                      // el for abre su ambito
+            if (esId(0) && lex(1).equals(":")) { forEach(); pilaAmb.pop(); return; }
+
+            // inicializacion
+            expresion();
+            while (lex().equals(",")) { sig(); expresion(); }
+            esperar(";");
+            String etqInicio = nuevaEtiqueta("For");
+            etiqueta(etqInicio);
+            ValCuad c = condicion(expresion());
+            esperar(";");
+            String etqSalida = nuevaEtiqueta("For");
+            emitir("", "JF", c.txt, "", etqSalida);
+            String etqCuerpo = nuevaEtiqueta("For");
+            emitir("", "JMP", "", "", etqCuerpo);
+            String etqIncremento = nuevaEtiqueta("For");
+            etiqueta(etqIncremento);
+            expresion();
+            while (lex().equals(",")) { sig(); expresion(); }
+            esperar(")");
+            emitir("", "JMP", "", "", etqInicio);
+            etiqueta(etqCuerpo);
+            pilaEstructuras.push(new EstructuraCuad("For", etqSalida));
+            sentencia();
+            emitir("", "JMP", "", "", etqIncremento);
+            etiqueta(etqSalida);
+            pilaEstructuras.pop();
+            pilaAmb.pop();
+        }
+
+        private void forEach() {
+            String var = String.valueOf(sig()[1]);
+            esperar(":");
+            ValCuad arr = expresion();
+            esperar(")");
+            String indice = temp2(DEC);
+            emitir("", "=", indice, "", "0");
+            String etqInicio = nuevaEtiqueta("For");
+            etiqueta(etqInicio);
+            String largo = temp2(DEC);
+            emitir("", "CALL", "len", "", "");
+            emitir("", "", arr.txt, "", largo);
+            String cond = temp2(BOOL);
+            emitir("", "<", indice, largo, cond);
+            String etqSalida = nuevaEtiqueta("For");
+            emitir("", "JF", cond, "", etqSalida);
+            String etqCuerpo = nuevaEtiqueta("For");
+            emitir("", "JMP", "", "", etqCuerpo);
+            String etqIncremento = nuevaEtiqueta("For");
+            etiqueta(etqIncremento);
+            emitir("", "inc", indice, "", "1");
+            emitir("", "JMP", "", "", etqInicio);
+            etiqueta(etqCuerpo);
+            String elem = temp2(tipoId(var));
+            emitir("", "ARR", arr.txt, "", "");
+            emitir("", "", indice, "", elem);
+            emitir("", "=", var, "", elem);
+            pilaEstructuras.push(new EstructuraCuad("For", etqSalida));
+            sentencia();
+            emitir("", "JMP", "", "", etqIncremento);
+            etiqueta(etqSalida);
+            pilaEstructuras.pop();
+        }
+
+        // switch (v) { case c: S break ... default: S }
+        private void sentenciaSwitch() {
+            esperar("switch");
+            esperar("(");
+            ValCuad v = expresion();
+            esperar(")");
+            esperar("{");
+            String etqFin = nuevaEtiqueta("Swi");
+            pilaEstructuras.push(new EstructuraCuad("Swi", etqFin));
+            String etqSiguiente = null;
+            while (!lex().equals("}") && !lex().equals("\u0000EOF")) {
+                String l = lex();
+                if (l.equals("case") || l.equals("default")) {
+                    if (etqSiguiente != null) { etiqueta(etqSiguiente); etqSiguiente = null; }
+                    sig();
+                    if (l.equals("case")) {
+                        ValCuad c = expresion();
+                        String t = temp2(BOOL);
+                        emitir("", "==", v.txt, c.txt, t);
+                        etqSiguiente = nuevaEtiqueta("Swi");
+                        emitir("", "JF", t, "", etqSiguiente);
+                    }
+                    esperar(":");
+                    continue;
+                }
+                if (l.equals(";")) { sig(); continue; }
+                if (l.equals("break")) { sig(); emitir("", "JMP", "", "", etqFin); continue; }
+                int antes = pos;
+                sentencia();
+                if (pos == antes) throw new RuntimeException("sin avance");
+            }
+            esperar("}");
+            if (etqSiguiente != null) etiqueta(etqSiguiente);
+            etiqueta(etqFin);
+            pilaEstructuras.pop();
+        }
+
+        // return v  ->  CALL return / v -> temporal del tipo del metodo
+        private void sentenciaReturn() {
+            esperar("return");
+            ValCuad v = expresion();
+            String metodo = pilaMetodosCuad.isEmpty() ? "Main" : pilaMetodosCuad.peek();
+            int tipo = tipoId(metodo);
+            emitir("", "CALL", "return", "", "");
+            emitir("", "", v.txt, "", tipo == VAR ? "" : "TD" + metodo);
+        }
+
+        // ------------------------------------------------------------- expresiones
+        // OR -> AND {(|| |) AND}
+        private ValCuad expresion() {
+            ValCuad a = and();
+            while (lex().equals("||") || lex().equals("|")) {
+                String op = String.valueOf(sig()[1]);
+                a = binaria(op, a, and());
+            }
+            if (lex().equals("?")) {                       // ternario: c ? a : b
+                sig();
+                int modoAnt = modo;
+                if (modo == 0) modo = 1;
+                int[] c2 = cont2.clone();
+                try {
+                    expresion();
+                    esperar(":");
+                    expresion();
+                } finally { modo = modoAnt; System.arraycopy(c2, 0, cont2, 0, 9); }
+                return a;                                   // como Semantica 1: el valor del ternario es la condicion
+            }
+            return a;
+        }
+        private ValCuad and() {
+            ValCuad a = relacional();
+            while (lex().equals("&&") || lex().equals("&")) {
+                String op = String.valueOf(sig()[1]);
+                a = binaria(op, a, relacional());
+            }
+            return a;
+        }
+        private ValCuad relacional() {
+            ValCuad a = simple();
+            while (true) {
+                String l = lex();
+                if (l.equals("<") || l.equals(">") || l.equals("<=") || l.equals(">=") || l.equals("==") || l.equals("!=")) {
+                    sig();
+                    a = binaria(l, a, simple());
+                } else return a;
+            }
+        }
+        private ValCuad simple() {
+            ValCuad a = termino();
+            while (true) {
+                String l = lex();
+                if (l.equals("+") || l.equals("-") || l.equals("<<") || l.equals(">>") || l.equals(">>>")) {
+                    sig();
+                    a = binaria(l, a, termino());
+                } else return a;
+            }
+        }
+        private ValCuad termino() {
+            ValCuad a = elevacion();
+            while (true) {
+                String l = lex();
+                if (l.equals("*") || l.equals("/") || l.equals("#") || l.equals("%")) {
+                    sig();
+                    a = binaria(l, a, elevacion());
+                } else return a;
+            }
+        }
+        private ValCuad elevacion() {
+            ValCuad a = factor();
+            while (lex().equals("^")) {
+                sig();
+                a = binaria("^", a, factor());
+            }
+            return a;
+        }
+        private ValCuad binaria(String op, ValCuad a, ValCuad b) { return binaria(op, a, b, false); }
+        // propio = true: el temporal es de los cuadruplos (asignaciones compuestas), no de Semantica 1
+        private ValCuad binaria(String op, ValCuad a, ValCuad b, boolean propio) {
+            // Operacion con tipos incompatibles (o con un void): error de Semantica 1, los cuadruplos se detienen
+            if (!sinParar && modo == 0 && (a.txt.equals("TVoid") || b.txt.equals("TVoid") || evaluarOperacion(a.tipo, b.tipo, op) == E))
+                throw new RuntimeException("error de tipos en la operacion");
+            int tipo = tipoOperacion(a.tipo, b.tipo, op);
+            String t = propio ? temp2(tipo) : temp1(tipo);
+            emitir("", op, a.txt, b.txt, t);
+            return new ValCuad(t, tipo);
+        }
+
+        private ValCuad factor() {
+            String l = lex();
+            // constante con signo
+            if ((l.equals("-") || l.equals("+")) && esConstante(1)) {
+                sig();
+                Object[] tok = sig();
+                String txt = (l.equals("-") ? "-" : "") + tok[1];
+                return new ValCuad(txt, tipoConstante(tok));
+            }
+            if (esConstante(0)) {
+                Object[] tok = sig();
+                return new ValCuad(String.valueOf(tok[1]), tipoConstante(tok));
+            }
+            if (l.equals("(")) {
+                sig();
+                ValCuad v = expresion();
+                esperar(")");
+                return v;
+            }
+            if (l.equals("++") || l.equals("--")) {
+                sig();
+                String id = String.valueOf(sig()[1]);
+                emitir("", l.equals("++") ? "inc" : "dec", id, "", "1");
+                return new ValCuad(id, tipoId(id));
+            }
+            if (l.equals("!") || l.equals("~")) {
+                sig();
+                esperar("(");
+                ValCuad v = expresion();
+                esperar(")");
+                int tipo = l.equals("!") ? BOOL : v.tipo;
+                String t = temp2(tipo);                     // el temporal de ! y ~ es propio de los cuadruplos
+                emitir("", l, v.txt, "", t);
+                return new ValCuad(t, tipo);
+            }
+            if (esNativa(l)) return llamadaNativa();
+            if (esId(0)) return identificador();
+            throw new RuntimeException("factor inesperado " + l);
+        }
+
+        // Funcion nativa: CALL nombre / argumentos -> temporal (de las operaciones)
+        private ValCuad llamadaNativa() {
+            String nombreOriginal = String.valueOf(sig()[1]);
+            String f = nombreOriginal.toLowerCase();
+            List<ValCuad> args = new ArrayList<>();
+            boolean conParentesis = lex().equals("(");
+            if (conParentesis) {
+                sig();
+                if (!lex().equals(")")) {
+                    args.add(expresion());
+                    while (lex().equals(",")) { sig(); args.add(expresion()); }
+                }
+                esperar(")");
+            }
+            int tipo = tipoNativa(f, args);
+            String r = tipo < 0 ? "void" : temp1(tipo);
+            if (args.isEmpty() && !conParentesis) {
+                emitir("", "CALL", nombreOriginal, "", r);      // ej. CLEAR: una sola fila
+            } else {
+                emitir("", "CALL", nombreOriginal, "", "");
+                filasArgumentos(args, r);
+            }
+            return new ValCuad(tipo < 0 ? "TVoid" : r, tipo < 0 ? VAR : tipo);
+        }
+
+        // Argumentos de a dos por fila (V1, V2); el resultado va en la ultima
+        private void filasArgumentos(List<ValCuad> args, String resultado) {
+            if (args.isEmpty()) { emitir("", "", "", "", resultado); return; }
+            for (int k = 0; k < args.size(); k += 2) {
+                String v1 = args.get(k).txt;
+                String v2 = (k + 1 < args.size()) ? args.get(k + 1).txt : "";
+                boolean ultima = k + 2 >= args.size();
+                emitir("", "", v1, v2, ultima ? resultado : "");
+            }
+        }
+
+        // id, id[...], id(...), id = ..., id += ...
+        private ValCuad identificador() {
+            String id = String.valueOf(sig()[1]);
+            ValCuad destino;
+            if (lex().equals("(")) {                         // llamada a def
+                sig();
+                List<ValCuad> args = new ArrayList<>();
+                if (!lex().equals(")")) {
+                    args.add(expresion());
+                    while (lex().equals(",")) { sig(); args.add(expresion()); }
+                }
+                esperar(")");
+                int tipo = tipoId(id);
+                boolean proc = (tipo == VAR);                   // procedimiento: su resultado es void
+                String r = proc ? "void" : "TD" + id;
+                emitir("", "CALL", id, "", "");
+                filasArgumentos(args, r);
+                destino = new ValCuad(proc ? "TVoid" : r, tipo);
+            } else if (lex().equals("[")) {                  // arreglo
+                sig();
+                List<ValCuad> indices = new ArrayList<>();
+                indices.add(expresion());
+                while (lex().equals(",")) { sig(); indices.add(expresion()); }
+                esperar("]");
+                String t = temp2(tipoId(id));
+                emitir("", "ARR", id, "", "");
+                filasArgumentos(indices, t);
+                destino = new ValCuad(t, tipoId(id));
+            } else {
+                destino = new ValCuad(id, tipoId(id));
+            }
+
+            String op = lex();
+            if (op.equals("=") || op.equals("+=") || op.equals("-=") || op.equals("*=") || op.equals("/=")) {
+                sig();
+                ValCuad v = expresion();
+                if (!op.equals("=")) {
+                    // x += v  ->  + x v T ; asig x T
+                    v = binaria(op.substring(0, 1), destino, v, true);
+                }
+                // Asignacion incompatible: la operacion ya se genero, la asignacion no (error de Semantica 1)
+                if (!sinParar && modo == 0 && (v.txt.equals("TVoid") || !cabeEnTipo(destino.tipo, v.tipo)))
+                    throw new RuntimeException("asignacion incompatible");
+                emitir("", "=", destino.txt, "", v.txt);
+            }
+            return destino;
+        }
+    }
+
+    // =====================================================================================
+    // HOJA Cont-CI: por cada ambito, cuantos temporales, operadores/saltos y etiquetas hay en
+    // los cuadruplos. Mismo formato que la plantilla del profesor (colores, bordes, anchos).
+    // =====================================================================================
+    private static final String[] CONTCI_COLUMNAS = {
+        "Ambitos",
+        "TBin", "TDec", "TOct", "THex", "TReal", "Texp", "TCadena", "TBoolean",          // B..I temporales
+        "Arr", "call", "=", "Op-Rel", "Ope-Log", "Oper-Arit", "op-turno", "JF", "JMP",   // J..R acciones (operadores y saltos)
+        "if-E", "For-E", "do-E", "Whi-E", "Switch-E", "DEF", "main"                      // S..Y etiquetas
+    };
+
+    // Columna (1..24) en la que cuenta una fila de cuadruplos por su operacion; -1 si no cuenta
+    private static int columnaOperacionContCI(String a) {
+        switch (a) {
+            case "ARR": return 9;
+            case "CALL": return 10;
+            case "=": return 11;
+            case "<": case "<=": case ">": case ">=": case "!=": case "==": return 12;          // Op-Rel
+            case "&&": case "&": case "|": case "||": case "!": case "~": case "#": return 13;   // Ope-Log
+            case "+": case "-": case "*": case "/": case "%": case "^": case "inc": case "dec": return 14;  // Oper-Arit (^ es potencia; ++ y -- salen como inc/dec)
+            case "<<": case ">>": case ">>>": return 15;                                      // Op-Turno
+            case "JF": return 16;                                                             // salto si es falso
+            case "JMP": case "JT": return 17;                                                 // JMP y el JT del do-while
+            default: return -1;
+        }
+    }
+
+    private int[][] calcularContCI() {
+        int n = Math.max(1, totalAmbitosCuad);
+        int[][] cont = new int[n][CONTCI_COLUMNAS.length];
+        String[] tiposT = {"TBin", "TDec", "TOct", "THex", "TReal", "Texp", "TCadena", "TBoolean"};
+        Set<String> vistos = new HashSet<>();
+        for (int k = 0; k < listaCuadruplosEns.size(); k++) {
+            String[] f = listaCuadruplosEns.get(k);
+            int amb = k < listaAmbitoCuad.size() ? listaAmbitoCuad.get(k) : 0;
+            if (amb < 0 || amb >= n) amb = 0;
+            // Temporales: cada uno se cuenta una vez, en el ambito donde aparece por primera vez
+            for (int c = 2; c <= 4; c++) {
+                String v = f[c] == null ? "" : f[c];
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(TBin|TDec|TOct|THex|TReal|Texp|TCadena|TBoolean)\\d+$").matcher(v);
+                if (m.matches() && vistos.add(v)) {
+                    for (int t = 0; t < tiposT.length; t++) if (tiposT[t].equals(m.group(1))) cont[amb][1 + t]++;
+                }
+                else if (v.matches("^TD[#$\u00bf@\u00a1].*") && vistos.add(v)) {
+                    // resultado de una def de usuario (TD + nombre): cuenta como temporal del tipo de la def
+                    char p0 = v.charAt(2);
+                    int t = -1;
+                    if (p0 == '#') { char p1 = v.length() > 3 ? v.charAt(3) : 'D'; t = p1 == 'B' ? 0 : p1 == 'O' ? 2 : p1 == 'X' ? 3 : 1; }
+                    else if (p0 == '$') t = 4;
+                    else if (p0 == '\u00bf') t = 5;
+                    else if (p0 == '@') t = 6;
+                    else if (p0 == '\u00a1') t = 7;
+                    if (t >= 0) cont[amb][1 + t]++;
+                }
+            }
+            // Operadores y saltos
+            int col = columnaOperacionContCI(f[1] == null ? "" : f[1]);
+            if (col > 0) cont[amb][col]++;
+            // Etiquetas
+            String e = f[0] == null ? "" : f[0];
+            if (e.startsWith("if-")) cont[amb][18]++;
+            else if (e.startsWith("For-")) cont[amb][19]++;
+            else if (e.startsWith("do-")) cont[amb][20]++;
+            else if (e.startsWith("Whi-")) cont[amb][21]++;
+            else if (e.startsWith("Switch-")) cont[amb][22]++;
+            // Cada metodo cuenta su main(); las def ademas cuentan DEF
+            if ("Metodo".equals(f[1])) {
+                cont[amb][24]++;
+                if (!"main".equals(f[2])) cont[amb][23]++;
+            }
+        }
+        return cont;
+    }
+
+    private org.apache.poi.xssf.usermodel.XSSFCellStyle estiloContCI(Workbook wb, int[] rgb, boolean arial10,
+            boolean centro, boolean centroVertical, boolean izq, boolean der, boolean arr, boolean abajo) {
+        org.apache.poi.xssf.usermodel.XSSFCellStyle st = (org.apache.poi.xssf.usermodel.XSSFCellStyle) wb.createCellStyle();
+        org.apache.poi.ss.usermodel.Font fuente = wb.createFont();
+        fuente.setFontName(arial10 ? "Arial" : "Calibri");
+        fuente.setFontHeightInPoints((short) (arial10 ? 10 : 11));
+        st.setFont(fuente);
+        if (rgb != null) {
+            st.setFillForegroundColor(new org.apache.poi.xssf.usermodel.XSSFColor(
+                    new byte[]{(byte) rgb[0], (byte) rgb[1], (byte) rgb[2]}, null));
+            st.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        }
+        if (centro) st.setAlignment(HorizontalAlignment.CENTER);
+        if (centroVertical) st.setVerticalAlignment(VerticalAlignment.CENTER);
+        if (izq) st.setBorderLeft(BorderStyle.THIN);
+        if (der) st.setBorderRight(BorderStyle.THIN);
+        if (arr) st.setBorderTop(BorderStyle.THIN);
+        if (abajo) st.setBorderBottom(BorderStyle.THIN);
+        return st;
+    }
+
+    private void crearHojaContCI(Workbook wb) {
+        Sheet hoja = wb.createSheet("Cont-CI");
+        int[][] cont = calcularContCI();
+
+        // Colores de la plantilla (tema de Office con su tono)
+        int[] amarillo = {0xFF, 0xFF, 0x00};      // Temporales
+        int[] naranja = {0xFF, 0xC0, 0x00};       // Operadores y saltos
+        int[] verde = {0x92, 0xD0, 0x50};         // Etiquetas
+        int[] azulAmb = {0xBD, 0xD7, 0xEE};       // "Ambitos"
+        int[] amarilloT = {0xFF, 0xF2, 0xCC};     // cabeceras de temporales
+        int[] naranjaO = {0xF8, 0xCB, 0xAD};      // cabeceras de operadores y saltos
+        int[] verdeE = {0xA9, 0xD0, 0x8E};        // cabeceras de etiquetas
+
+        // Fila 1: grupos
+        Row f1 = hoja.createRow(0);
+        org.apache.poi.xssf.usermodel.XSSFCellStyle stTemp = estiloContCI(wb, amarillo, false, true, false, false, false, false, true);
+        org.apache.poi.xssf.usermodel.XSSFCellStyle stBordeAbajo = estiloContCI(wb, null, false, false, false, false, false, false, true);
+        org.apache.poi.xssf.usermodel.XSSFCellStyle stOper = estiloContCI(wb, naranja, false, true, false, false, false, false, false);
+        org.apache.poi.xssf.usermodel.XSSFCellStyle stEtq = estiloContCI(wb, verde, false, true, false, false, false, false, false);
+        Cell c;
+        c = f1.createCell(1); c.setCellValue("Temporales"); c.setCellStyle(stTemp);
+        for (int k = 2; k <= 8; k++) f1.createCell(k).setCellStyle(stBordeAbajo);
+        c = f1.createCell(9); c.setCellValue("Acciones"); c.setCellStyle(stOper);
+        c = f1.createCell(18); c.setCellValue("Etiquetas"); c.setCellStyle(stEtq);
+        hoja.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 1, 8));
+        hoja.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 9, 17));
+        hoja.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(0, 0, 18, 24));
+
+        // Fila 2: cabeceras
+        Row f2 = hoja.createRow(1);
+        org.apache.poi.xssf.usermodel.XSSFCellStyle stAmb = estiloContCI(wb, azulAmb, false, false, false, true, false, true, true);
+        org.apache.poi.xssf.usermodel.XSSFCellStyle stCabT = estiloContCI(wb, amarilloT, true, true, true, true, true, true, true);
+        org.apache.poi.xssf.usermodel.XSSFCellStyle stCabO = estiloContCI(wb, naranjaO, false, true, false, true, true, true, true);
+        org.apache.poi.xssf.usermodel.XSSFCellStyle stCabTurno = estiloContCI(wb, naranjaO, false, true, false, false, true, false, false);
+        org.apache.poi.xssf.usermodel.XSSFCellStyle stCabE = estiloContCI(wb, verdeE, false, true, false, true, true, true, true);
+        for (int k = 0; k < CONTCI_COLUMNAS.length; k++) {
+            c = f2.createCell(k);
+            c.setCellValue(CONTCI_COLUMNAS[k]);
+            if (k == 0) c.setCellStyle(stAmb);
+            else if (k <= 8) c.setCellStyle(stCabT);
+            else if (k == 15) c.setCellStyle(stCabTurno);   // en la plantilla "op-turno" solo lleva borde derecho
+            else if (k <= 17) c.setCellStyle(stCabO);
+            else c.setCellStyle(stCabE);
+        }
+
+        // Filas de datos: un renglon por ambito y al final los totales
+        org.apache.poi.xssf.usermodel.XSSFCellStyle stNumAmb = estiloContCI(wb, null, false, true, true, true, true, true, true);
+        org.apache.poi.xssf.usermodel.XSSFCellStyle stCentro = estiloContCI(wb, null, false, true, false, true, true, true, true);
+        org.apache.poi.xssf.usermodel.XSSFCellStyle stNormal = estiloContCI(wb, null, false, false, false, true, true, true, true);
+        int[] totales = new int[CONTCI_COLUMNAS.length];
+        int filaIdx = 2;
+        for (int amb = 0; amb < cont.length; amb++) {
+            Row f = hoja.createRow(filaIdx++);
+            c = f.createCell(0); c.setCellValue(amb); c.setCellStyle(stNumAmb);
+            for (int k = 1; k < CONTCI_COLUMNAS.length; k++) {
+                c = f.createCell(k);
+                c.setCellValue(cont[amb][k]);
+                c.setCellStyle(k <= 8 ? stCentro : stNormal);
+                totales[k] += cont[amb][k];
+            }
+        }
+        Row ft = hoja.createRow(filaIdx);
+        c = ft.createCell(0); c.setCellValue("totales"); c.setCellStyle(stNormal);
+        for (int k = 1; k < CONTCI_COLUMNAS.length; k++) {
+            c = ft.createCell(k);
+            c.setCellValue(totales[k]);
+            c.setCellStyle(k <= 8 ? stCentro : stNormal);
+        }
+
+        // Anchos de columna de la plantilla (en caracteres)
+        double[] anchos = {8.29, 4.71, 5.29, 5.0, 5.29, 5.71, 5.0, 8.29, 8.71, 8.71};
+        for (int k = 0; k < anchos.length; k++) hoja.setColumnWidth(k, (int) Math.round(anchos[k] * 256));
+        hoja.setColumnWidth(18, (int) Math.round(9.71 * 256));
+    }
 
     private void crearXLS() {
         JFileChooser fc = new JFileChooser();
@@ -4454,6 +5622,14 @@ public class AnalizadorPrincipal extends JFrame {
             Map<String, Integer> sem3Acept = new HashMap<>();    // Aceptados de cada uno
             Map<String, Integer> sem3Error = new HashMap<>();    // Errores de cada uno
             Set<String> todasLasEntidadesSem3 = new TreeSet<>(); // Orden natural: CLEAR (mayusculas) queda primero
+            // Todas las funciones nativas con todos sus parametros aparecen siempre (en 0 si no se usaron)
+            String[][] nativasSem3 = {{"CLEAR", "0"}, {"chr", "1"}, {"concat", "2"}, {"copy", "2"}, {"cos", "1"},
+                {"dec", "1"}, {"inc", "1"}, {"pow", "2"}, {"pred", "1"}, {"sin", "1"}, {"sqr", "1"}, {"sqrt", "1"},
+                {"sqrtv", "2"}, {"str", "2"}, {"strlen", "1"}, {"succ", "1"}, {"tan", "1"}, {"val", "3"}};
+            for (String[] nat : nativasSem3) {
+                todasLasEntidadesSem3.add(nat[0]);
+                for (int kp = 1; kp <= Integer.parseInt(nat[1]); kp++) todasLasEntidadesSem3.add(nat[0] + "_p" + kp);
+            }
 
             if (listaRegistroReglas != null) {
                 for (Object[] regla : listaRegistroReglas) {
@@ -4606,6 +5782,27 @@ public class AnalizadorPrincipal extends JFrame {
             }
 
             for (int i = 0; i < cabeceraSem3.length; i++) hojaSemantica3.autoSizeColumn(i);
+
+            // =========================================================================
+            // 12. CUADRUPLOS (simulacion de ensamblador): E | A | V1 | V2 | Resultado
+            // =========================================================================
+            Sheet hojaCuadruplos = workbook.createSheet("CUADRUPLO");
+            String[] cabeceraCuad = {"Etiqueta", "Acción", "Val1", "Val2", "Result"};
+            crearFilaCabecera(hojaCuadruplos, cabeceraCuad, estiloCabecera);
+            int filaCuadIndex = 1;
+            for (String[] cuad : listaCuadruplosEns) {
+                Row fila = hojaCuadruplos.createRow(filaCuadIndex++);
+                for (int c = 0; c < cuad.length; c++) {
+                    String v = cuad[c] == null ? "" : cuad[c];
+                    Cell celda = fila.createCell(c);
+                    if (v.matches("-?\\d+")) celda.setCellValue(Double.parseDouble(v));   // numeros enteros como numero
+                    else celda.setCellValue(v);
+                }
+            }
+            for (int i = 0; i < cabeceraCuad.length; i++) hojaCuadruplos.autoSizeColumn(i);
+
+            // 13. Cont-CI (contadores de los cuadruplos por ambito), despues de la hoja de cuadruplos
+            crearHojaContCI(workbook);
 
             try (FileOutputStream out = new FileOutputStream(archivo)) {
                 workbook.write(out);
