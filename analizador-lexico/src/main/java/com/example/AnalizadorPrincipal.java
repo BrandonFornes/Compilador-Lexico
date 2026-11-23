@@ -5267,7 +5267,7 @@ public class AnalizadorPrincipal extends JFrame {
         JFileChooser fc = new JFileChooser();
         fc.setDialogTitle("Exportar Resultados a Excel");
         fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Archivo de Excel (*.xlsx)", "xlsx"));
-        fc.setSelectedFile(new File("Semantica3-BrandonFornesRubio.xlsx"));
+        fc.setSelectedFile(new File("cuadruplos-BrandonFornesRubio.xlsx"));
         if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
                 File archivo = fc.getSelectedFile();
                 if (!archivo.getName().toLowerCase().endsWith(".xlsx")) {
@@ -5803,6 +5803,8 @@ public class AnalizadorPrincipal extends JFrame {
 
             // 13. Cont-CI (contadores de los cuadruplos por ambito), despues de la hoja de cuadruplos
             crearHojaContCI(workbook);
+            // Orden pedido: Cont-CI antes de CUADRUPLO
+            workbook.setSheetOrder("Cont-CI", workbook.getSheetIndex("CUADRUPLO"));
 
             try (FileOutputStream out = new FileOutputStream(archivo)) {
                 workbook.write(out);
